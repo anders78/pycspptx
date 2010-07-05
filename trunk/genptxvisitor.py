@@ -1,6 +1,7 @@
 import ast
 import instrs
 import time
+from random import *
 
 class GenPTXVisitor(ast.NodeVisitor):
     def __init__(self):
@@ -25,14 +26,28 @@ class GenPTXVisitor(ast.NodeVisitor):
 #.func (.reg .v2 .b32 rval) random ()\n\
 #{\n\
 #        .reg .u64 localtmp;\n\
-#        mul.lo.u32 seed, seed, %t_id;\n\
-#        mul.wide.u32 localtmp, 1664525, seed;\n\
+#        .reg .f64 localtmp_f;\n\
+#        .reg .u32 k;\n\
+#//        add.u32 %seed, %seed, %t_id;\n\
+#        mul.wide.u32 localtmp, 1664525, %seed;\n\
 #        add.u64 localtmp, localtmp, 1013904223;\n\
 #        rem.u64 localtmp, localtmp, 4294967296;\n\
-#        cvt.u32.u64 seed, localtmp;\n\
-#        cvt.rn.f32.u64 rval.x, localtmp;\n\
-#        div.approx.f32 rval.x, rval.x, 4294967296.0;\n\
+#        cvt.u32.u64 %seed, localtmp;\n\
+#// //  k = floor((double) y*64/4294967296); \n\
+#//        mul.wide.u32 localtmp, %lcg_y, 64;\n\
+#//        cvt.rn.f64.u64 localtmp_f, localtmp;\n\
+#//        div.f64 localtmp_f, localtmp_f, 4294967296.0;\n\
+#//       cvt.rzi.u32.f64 k, localtmp_f;\n\
+#// //  y = j[k];\n\
+#//        mul.lo.u32 k, k, 4;\n\
+#//        add.u32 %lcg_j, %lcg_j, k;\n\
+#//        ld.global.u32 %lcg_y, [%lcg_j];\n\
+#// //  j[k] = i;\n\
+#//        st.global.u32 [%lcg_j], %seed;\n\
+#        cvt.rn.f32.u32 rval.x, %seed;\n\
+#        div.approx.f32 rval.x, rval.x, 4294967295.0;\n\
 #        mov.u32 rval.y, 2;\n\
+#//        mov.u32 rval.x, %seed;\n\
 #        ret.uni;\n\
 #}\n\
 
@@ -55,7 +70,7 @@ class GenPTXVisitor(ast.NodeVisitor):
 #  k = floor((double) y*N/m);
 #  y = j[k];
 #  j[k] = i;
-#  return conv*(i-1);
+#  return conv*(y-1);
 #}
 
     def visit_Module(self, node):
@@ -65,25 +80,33 @@ class GenPTXVisitor(ast.NodeVisitor):
 .reg .b32 divhelp<3>;\n\
 .reg .b64 %tid_offset;\n\
 .reg .b32 %t_id;\n\
-.reg .u32 seed;\n\
-.func (.reg .f32 rval) random ()\n\
+.reg .v2 .b32 %seed;\n\
+.func (.reg .v2 .b32 rval) random ()\n\
 {\n\
-        .reg .b32 l;\n\
-        .reg .b32 tmp<2>;\n\
-        .reg .pred less;\n\
-        div.u32 l, seed, 127773;\n\
-        mul.lo.u32 tmp0, l, 2836;\n\
-        mul.lo.u32 tmp1, l, 127773;\n\
-        sub.u32 tmp1, seed, tmp1;\n\
-        mul.lo.u32 tmp1, 16807, tmp1;\n\
-        sub.u32 seed, tmp1, tmp0;\n\
-        setp.lt.u32 less, seed, 0;\n\
- @!less bra.uni notless;\n\
-        add.u32 seed, seed, 2147483647;\n\
-  notless:\n\
-        sub.u32 tmp0, seed, 1;\n\
-        mul.f32 rval, 4.65661287e-10, tmp0;\n\
-        ret.uni;\n\
+        .reg .u64 localtmp;\n\
+        .reg .f64 localtmp_f;\n\
+        .reg .u32 k;\n\
+//        add.u32 %seed.x, %seed.x, %t_id;\n\
+        mul.wide.u32 localtmp, 1664525, %seed.x;\n\
+        add.u64 localtmp, localtmp, 1013904223;\n\
+        rem.u64 localtmp, localtmp, 4294967296;\n\
+        cvt.u32.u64 %seed.x, localtmp;\n\
+// //  k = floor((double) y*64/4294967296); \n\
+//        mul.wide.u32 localtmp, %lcg_y, 64;\n\
+//        cvt.rn.f64.u64 localtmp_f, localtmp;\n\
+//        div.f64 localtmp_f, localtmp_f, 4294967296.0;\n\
+//       cvt.rzi.u32.f64 k, localtmp_f;\n\
+// //  y = j[k];\n\
+//        mul.lo.u32 k, k, 4;\n\
+//        add.u32 %lcg_j, %lcg_j, k;\n\
+//        ld.global.u32 %lcg_y, [%lcg_j];\n\
+// //  j[k] = i;\n\
+//        st.global.u32 [%lcg_j], %seed.x;\n\
+        cvt.rn.f32.u32 rval.x, %seed.x;\n\
+        div.approx.f32 rval.x, rval.x, 4294967295.0;\n\
+        mov.u32 rval.y, 2;\n\
+//        mov.u32 rval.x, %seed.x;\n\
+        ret;\n\
 }\n\
 .func (.reg .v2 .b32 %rval) lambda (.reg .v2 .b32 x, .reg .v2 .b32 y)\n\
 .func (.reg .v2 .b32 rval) reduce (.reg .v2 .b32 list){\n\
@@ -96,25 +119,25 @@ class GenPTXVisitor(ast.NodeVisitor):
         .reg .pred typfloat;\n\
         setp.eq.u32 typfloat, list.y, 2;\n\
 @typfloat bra.uni float;\n\
-        ld.const.u32 len, [list];\n\
+        ld.global.u32 len, [list];\n\
         bra.uni typend;\n\
 float:\n\
-        ld.const.f32 tmp, [list];\n\
+        ld.global.f32 tmp, [list];\n\
         cvt.rni.u32.f32 len, tmp;\n\
 typend:\n\
         add.u32 list.x, list.x, 4;\n\
         mov.u32 pos, 2;\n\
-        ld.const.b32 param0.x, [list];\n\
+        ld.global.b32 param0.x, [list];\n\
         mov.u32 param0.y, list.y;\n\
         add.u32 list.x, list.x, 4;\n\
-        ld.const.b32 param1.x, [list];\n\
+        ld.global.b32 param1.x, [list];\n\
         mov.u32 param1.y, list.y;\n\
         add.u32 list.x, list.x, 4;\n\
         call.uni (rval), lambda, (param0, param1);\n\
 start:\n\
         setp.lt.u32 run, pos, len;\n\
   @!run bra.uni end;\n\
-        ld.const.b32 param1.x, [list];\n\
+        ld.global.b32 param1.x, [list];\n\
         call.uni (rval), lambda, (rval, param1);\n\
         add.u32 pos, pos, 1;\n\
         add.u32 list.x, list.x, 4;\n\
@@ -122,29 +145,6 @@ start:\n\
 end:\n\
         ret.uni;\n\
 }'
-#.func (.reg .v2 .b32 rval) range (.reg .v2 .s32 length){\n\
-#        .reg .pred run;\n\
-#        .reg .u32 pos;\n\
-#        .reg .v2 .b32 elem;\n\
-#        mov.u32 elem.y, 2;\n\
-#//        mov.f32 elem.x, 2.0;\n\
-#        .local .v2 .b32 arr[7001];\n\
-#        .reg .u32 list;\n\
-#        mov.u32 list, arr;\n\
-#        st.local.v2.u32 [list], length;\n\
-#        mul.lo.u32 pos, length.x, 8;\n\
-#        add.u32 list, list, pos;\n\
-#        cvt.rn.f32.s32 elem.x, length.x;\n\
-#start:\n\
-#        setp.gt.s32 run, length.x, -1;\n\
-#  @!run bra end;\n\
-#        st.local.v2.f32 [list], elem;\n\
-#        sub.u32 list, list, 8;\n\
-#        sub.s32 length.x, length.x, 1;\n\
-#        sub.f32 elem.x, elem.x, 1.0;\n\
-#        bra start;\n\
-#end:\n\
-#}\n\
         for i in node.body:
             meth = getattr(self, 'visit_'+type(i).__name__)
             stmts = stmts + meth(i)
@@ -174,6 +174,10 @@ end:\n\
             for i in self.varlist:
                 stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
             self.var_list = old_varlist
+            #Random generator initializations
+#            stmts = '\tmov.u32 %lcg_y, '+ str(randint(0,4294967295)) +';\n' + stmts
+#            stmts = '\t.global.u32 %%j[64] = {%s};\n\tmov.u32 %%lcg_j, %%j;\n' % (reduce(lambda x,y:str(x)+','+str(y), [randint(0,4294967295) for i in range(64)])) + stmts
+
 	    stmts = '.reg .b32 %r<3>;\n\
 \t.reg .b16 %rh<3>;\n\
 \tmov.u16 %rh1, %ctaid.x;\n\
@@ -182,7 +186,12 @@ end:\n\
 \tcvt.u32.u16 %r2, %tid.x;\n\
 \tadd.u32 %t_id, %r2, %r1;\n\
 \tmul.wide.u32 %tid_offset, %t_id, 4;\n\
-\tmov.u32 seed, '+ str(int(time.time()*1000)) +';\n' + stmts
+\tadd.u32 %r0, %t_id, ' + str(randint(0,4294967295)) + ';\n\
+\tmov.u32 %seed.x, %r0;\n\
+\tcall (%seed), random, ();\n\
+\tcall (%seed), random, ();\n' + stmts
+
+#\tmov.u32 %seed, '+ str(randint(0,4294967295)) +';\n' + stmts
             #TEMP!!
             stmts = '\n\t.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;' + stmts
 #            stmts = "\n\t.reg .v2 .b32 %letify<500>;" + stmts

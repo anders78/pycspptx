@@ -38,8 +38,8 @@ def producer(cout, count):
 @cudaprocess
 def worker(cin, cout):
     while True:
-        l = range(16000)
-        cout(l[0])
+        sum = reduce(lambda x,y: x+y, range(100))
+        cout(sum)
 
 @process
 def consumer(cin):
@@ -51,7 +51,7 @@ c1 = Channel()
 c2 = Channel()
 
 start = time.time()
-Parallel(producer(OUT(c1), 512), worker(IN(c1), OUT(c2)), consumer(IN(c2)))
+Parallel(producer(OUT(c1), 1024), worker(IN(c1), OUT(c2)), consumer(IN(c2)))
 end = time.time()
 print 'Time taken=', end-start
 print "Done"
