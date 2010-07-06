@@ -218,9 +218,10 @@ def execute(func, args):
             raise Exception('Unknown argument type %s' %i)
     instrs.args = ptx_args
 
-#    threads = 4
+#    threads = 1
 #    blocks = 1
     (threads, blocks) = calcThreadsnBlocks(count)
+#    print threads, blocks
 #    print "Running with threads = %s and blocks = %s" % (threads, blocks)
     #Make abstract syntax tree and create ptx from function
     st = ast.parse(inspect.getsource(func))
@@ -237,50 +238,35 @@ def execute(func, args):
     inst_selector = InstSelectVisitor()
     st = inst_selector.visit(st)
 
-    color = {}
- #   pos = 0
- #   for r in instrs.varlist:
- #       color[r] = pos
- #       pos = pos + 1
-    
-#    liveness = LivenessVisitor()
-#    liveness.visit(st)
-
-#    interference = InterferenceVisitor(instrs.varlist.keys()+instrs.reserved_registers)
-#    interference.visit(st)
-
-#    color = interference.color_graph(color)
-
-#    instrs.colornames = dict([(v, k) for (k, v) in color.iteritems()])
-#    print "Color:", color
-
-#    assignregisters = AssignRegistersVisitor(color)
-#    st = assignregisters.visit(st)
-
-#    print "\nGenerating PTX code:"
+    print "\nGenerating PTX code:"
     ptx_generator = GenPTXVisitor()
     ptx = ptx_generator.visit(st)
 #    print "\n"+ptx
 
-#    print "Loading CUDA module from buffer"
+    print "Loading CUDA module from buffer"
     #Load cuda module and kernel to execute from generated ptx
 #    cuda.Device(0).make_context(flags=cuda.ctx_flags.SCHED_AUTO)
 #    hModule = cuda.module_from_buffer(t)
 #    hKernel = hModule.get_function('worker')
+    start = time.time()
     hModule = cuda.module_from_buffer(ptx)
     hKernel = hModule.get_function(instrs.entryFunc)
 
     #Execute kernel
-#    print "Executing kernel"
+    print "Executing kernel"
+
     hKernel(*cuda_args, block=(threads, 1, 1), grid=(blocks,1))
-#    print "Execution done"
-    if cuda_args[1].array[0] == instrs.tag['float']:
-        cuda_args[1].array.dtype = numpy.float32
-#    print cuda_args[1].array[1:]
-    for i in range(len(args)):
-        if isinstance(args[i], ChannelEndWrite):
-            for j in cuda_args[i].array[1:]:
-                args[i](j)
+    end = time.time()
+    print 'Time taken=', end-start
+    print "Execution done"
+    if count > 0:
+        if cuda_args[1].array[0] == instrs.tag['float']:
+            cuda_args[1].array.dtype = numpy.float32
+    #    print cuda_args[1].array[1:]
+        for i in range(len(args)):
+            if isinstance(args[i], ChannelEndWrite):
+                for j in cuda_args[i].array[1:]:
+                    args[i](j)
             
 #    print "cuda_args", cuda_args[1].array[1:]
 #    print "ptx_args", ptx_args[1]
@@ -316,7 +302,9 @@ def message_handler(compile_success_bool, info_str, error_str):
 
 def calcThreadsnBlocks(count):
     #Divide into blocks of 512 threads each
-    if count % 512 == 0:
+    if count == 0:
+        return (1,1)
+    elif count % 512 == 0:
         t = 512
     elif count % 256 == 0:
         t = 256
