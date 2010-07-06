@@ -28,17 +28,18 @@ s = "\n\
 
 @process
 def producer(cout, count):
-    x = 42.0
+    x = 42
     for i in range(count):
         cout(x)
-        x = x + 1.0
+        x = x + 1
     retire(cout)
 
 #sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), range(cnt))
-@cudaprocess
+@process
 def worker(cin, cout):
     while True:
-        sum = reduce(lambda x,y: x+y, range(100))
+        cin()
+        sum = reduce(lambda x,y: y, range(100))
         cout(sum)
 
 @process
@@ -51,7 +52,7 @@ c1 = Channel()
 c2 = Channel()
 
 start = time.time()
-Parallel(producer(OUT(c1), 1024), worker(IN(c1), OUT(c2)), consumer(IN(c2)))
+Parallel(producer(OUT(c1), 64), worker(IN(c1), OUT(c2)), consumer(IN(c2)))
 end = time.time()
 print 'Time taken=', end-start
 print "Done"

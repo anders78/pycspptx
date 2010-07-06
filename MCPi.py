@@ -52,7 +52,7 @@ results=Channel()
 
 start = time()
 Parallel(
-   producer( jobs.writer() , 10000, 1024), #10000, 1000
+   producer( jobs.writer() , 320000, 1024), #10000, 1000
    2 * worker( jobs.reader() ,results.writer()),
    consumer(results.reader()))
 end = time()
