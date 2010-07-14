@@ -1,5 +1,5 @@
 import ast
-import instrs
+from instrs import *
 import time
 from random import *
 
@@ -86,26 +86,13 @@ class GenPTXVisitor(ast.NodeVisitor):
         .reg .u64 localtmp;\n\
         .reg .f64 localtmp_f;\n\
         .reg .u32 k;\n\
-//        add.u32 %seed.x, %seed.x, %t_id;\n\
         mul.wide.u32 localtmp, 1664525, %seed.x;\n\
         add.u64 localtmp, localtmp, 1013904223;\n\
         rem.u64 localtmp, localtmp, 4294967296;\n\
         cvt.u32.u64 %seed.x, localtmp;\n\
-// //  k = floor((double) y*64/4294967296); \n\
-//        mul.wide.u32 localtmp, %lcg_y, 64;\n\
-//        cvt.rn.f64.u64 localtmp_f, localtmp;\n\
-//        div.f64 localtmp_f, localtmp_f, 4294967296.0;\n\
-//       cvt.rzi.u32.f64 k, localtmp_f;\n\
-// //  y = j[k];\n\
-//        mul.lo.u32 k, k, 4;\n\
-//        add.u32 %lcg_j, %lcg_j, k;\n\
-//        ld.global.u32 %lcg_y, [%lcg_j];\n\
-// //  j[k] = i;\n\
-//        st.global.u32 [%lcg_j], %seed.x;\n\
         cvt.rn.f32.u32 rval.x, %seed.x;\n\
         div.approx.f32 rval.x, rval.x, 4294967295.0;\n\
         mov.u32 rval.y, 2;\n\
-//        mov.u32 rval.x, %seed.x;\n\
         ret;\n\
 }\n\
 .func (.reg .v2 .b32 %rval) lambda (.reg .v2 .b32 x, .reg .v2 .b32 y)\n\
@@ -146,8 +133,7 @@ end:\n\
         ret.uni;\n\
 }'
         for i in node.body:
-            meth = getattr(self, 'visit_'+type(i).__name__)
-            stmts = stmts + meth(i)
+            stmts = stmts + visit(self, i)
         return preamble + self.funcs + stmts
 
     def visit_FunctionDef(self, node):
@@ -166,18 +152,11 @@ end:\n\
                     if instrs.args[i][0] == 'ChannelEndWrite':
                         self.funcs = self.funcs + self.make_ChannelEndWrite(node.args.args[i].id, instrs.args[i][1])
                         stmts = stmts + '\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id)
-#                else:
- #                   stmts = "\n.regparam .v2 .b32 %s;" % node.args.args[i].id + stmts
             for i in node.body:
-                meth = getattr(self, 'visit_'+type(i).__name__)
-                stmts = stmts + meth(i)
+                stmts = stmts + visit(self, i)
             for i in self.varlist:
                 stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
             self.var_list = old_varlist
-            #Random generator initializations
-#            stmts = '\tmov.u32 %lcg_y, '+ str(randint(0,4294967295)) +';\n' + stmts
-#            stmts = '\t.global.u32 %%j[64] = {%s};\n\tmov.u32 %%lcg_j, %%j;\n' % (reduce(lambda x,y:str(x)+','+str(y), [randint(0,4294967295) for i in range(64)])) + stmts
-
 	    stmts = '.reg .b32 %r<3>;\n\
 \t.reg .b16 %rh<3>;\n\
 \tmov.u16 %rh1, %ctaid.x;\n\
@@ -191,12 +170,8 @@ end:\n\
 \tcall (%seed), random, ();\n\
 \tcall (%seed), random, ();\n' + stmts
 
-#\tmov.u32 %seed, '+ str(randint(0,4294967295)) +';\n' + stmts
-            #TEMP!!
             stmts = '\n\t.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;' + stmts
-#            stmts = "\n\t.reg .v2 .b32 %letify<500>;" + stmts
             stmts = '\n\t.reg .pred %pred<'+str(instrs.predcounter)+'>;'  + stmts
-#            stmts = "\n\t.reg .v2 .b32 %list<500>;" + stmts
             return '\n.entry %s (%s){%s\n}' % (node.name, args, stmts)
         else:
             for i in range(len(node.args.args)):
@@ -206,28 +181,16 @@ end:\n\
                     args = args + ','
             body = ''
             for i in node.body:
-                meth = getattr(self, 'visit_'+type(i).__name__)
-                body = body + meth(i)
+                body = body + visit(self, i)
             self.funcs = self.funcs + '\n.func (%s) %s (%s){' % ('.reg .v2 .b32 %rval', node.name, args)
-            #for i in self.varlist:
-             #   stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
             self.var_list = old_varlist
-            #TEMP!!
             stmts = stmts + '\n.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;'
-#            stmts = stmts + "\n.reg .v2 .b32 %letify<500>;"
             stmts = stmts + '\n.reg .pred %pred<'+str(instrs.predcounter)+'>;'
             self.funcs = self.funcs +stmts+ body +'\n}'
             return ''
 
-#    def visit_DeclareArray(self, node):
-#        print "GenPTX: DeclareArray", node.name, node.size
-#        name = getattr(self, 'visit_'+type(node.name).__name__)(node.name)
-#        string = '\n\t.local .v2 .b32 %s[%s];' % (name+'_local', node.size)
-#        string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
-#        return string
-
     def visit_DeclareArray(self, node):
-        name = getattr(self, 'visit_'+type(node.name).__name__)(node.name)
+        name = visit(self, node.name)
         if isinstance(node.elems[1].n, float):
             typ = '.f32'
             l = float(node.elems[0].n)
@@ -240,28 +203,24 @@ end:\n\
         elems = '{'+str(l)
         for i in node.elems[1:]:
             elems = elems + ', '+str(i.n)
-#            typ = typ + ', ' +str(instrs.tag[i])
         elems = elems +'}'
         string = '\n\t.global %s %s[%s] = %s;' % (typ, name+'_local', len(node.elems), elems)
-#        string = string + '\n\t.reg .u32 %s;' % (name+'_local_t')
         string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
         string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__])
         return string
 
     def visit_LoadParam(self, node):
-        reg = getattr(self, 'visit_'+type(node.reg).__name__)(node.reg)
-        param = getattr(self, 'visit_'+type(node.param).__name__)(node.param)
+        reg = visit(self, node.reg)
+        param = visit(self, node.param)
         return '\n\tld.param.u64 %s, [%s];' % (reg, param)
 
     def visit_MoveInstr(self, node):
-        rhs_meth = getattr(self, 'visit_'+type(node.rhs).__name__)
-        lhs_meth = getattr(self, 'visit_'+type(node.lhs).__name__)
-        return '\n\tmov.%s%s %s, %s;' % (node.type, node.vect, lhs_meth(node.lhs), rhs_meth(node.rhs))
+        return '\n\tmov.%s%s %s, %s;' % (node.type, node.vect, visit(self, node.lhs), visit(self, node.rhs))
 
     def visit_BinOpExpr(self, node):
-        dest = getattr(self, 'visit_'+type(node.dest).__name__)(node.dest)
-        right = getattr(self, 'visit_'+type(node.right).__name__)(node.right)
-        left = getattr(self, 'visit_'+type(node.left).__name__)(node.left)
+        dest = visit(self, node.dest)
+        right = visit(self, node.right)
+        left = visit(self, node.left)
         op = ''
         if isinstance(node.op, ast.Add):
             op = 'add'
@@ -292,24 +251,18 @@ end:\n\
         return '\n\t%s.%s %s, %s, %s;' % (op, node.type, dest, left, right)
 
     def visit_OrInstr(self, node):
-        dest_meth = getattr(self, 'visit_'+type(node.dest).__name__)
-        lhs_meth = getattr(self, 'visit_'+type(node.lhs).__name__)
-        rhs_meth = getattr(self, 'visit_'+type(node.rhs).__name__)
-        return '\n\tor.b32 %s, %s, %s;' % (dest_meth(node.dest), lhs_meth(node.lhs), rhs_meth(node.rhs))
+        return '\n\tor.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))
 
     def visit_AndInstr(self, node):
-        dest_meth = getattr(self, 'visit_'+type(node.dest).__name__)
-        lhs_meth = getattr(self, 'visit_'+type(node.lhs).__name__)
-        rhs_meth = getattr(self, 'visit_'+type(node.rhs).__name__)
-        return '\n\tand.b32 %s, %s, %s;' % (dest_meth(node.dest), lhs_meth(node.lhs), rhs_meth(node.rhs))
+        return '\n\tand.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))
 
     def visit_NotInstr(self, node):
-        lhs = getattr(self, 'visit_'+type(node.lhs).__name__)(node.lhs)
+        lhs = visit(self, node.lhs)
         return '\n\tnot.b32 %s, %s;' % (lhs, lhs)
 
     def visit_PredicateBranchInstr(self, node):
-        label = getattr(self, 'visit_'+type(node.label).__name__)(node.label)
-        pred_name = getattr(self, 'visit_'+type(node.pred_name).__name__)(node.pred_name)
+        label = visit(self, node.label)
+        pred_name = visit(self, node.pred_name)
         pred = ''
         if node.pred:
             pred = '@' + pred_name
@@ -323,12 +276,11 @@ end:\n\
     def visit_CallInstr(self, node):
         args = ''
         for i in range(len(node.args)):
-            meth = getattr(self, 'visit_'+type(node.args[i]).__name__)
-            args = args + meth(node.args[i])
+            args = args + visit(self, node.args[i])
             if i < len(node.args)-1:
                 args = args + ', '
         if node.lhs:
-            lhs = getattr(self, 'visit_'+type(node.lhs).__name__)(node.lhs)
+            lhs = visit(self, node.lhs)
             return '\n\tcall.uni (%s), %s, (%s);' % (lhs, node.funcname, args)
         else:
             return '\n\tcall.uni %s, (%s);' % (node.funcname, args)
@@ -342,7 +294,7 @@ end:\n\
             raise Exception('Unknown num type, only int and float allowed')
 
     def visit_Index(self, node):
-        val = getattr(self, 'visit_'+type(node.value).__name__)(node.value)
+        val = visit(self, node.value)
         val = int(val)*4
         return val
 
@@ -357,15 +309,15 @@ end:\n\
         return '%s' % node.id
 
     def visit_Typ(self, node):
-        s = getattr(self, 'visit_'+type(node.value).__name__)(node.value)
-        if isinstance(node.value, ast.Name) or isinstance(node.value, instrs.Register):
+        s = visit(self, node.value)
+        if isinstance(node.value, ast.Name) or isinstance(node.value, Register):
             return '%s.y' % s
         else:
             return '%s' % s
 
     def visit_Val(self, node):
-        s = getattr(self, 'visit_'+type(node.value).__name__)(node.value)
-        if isinstance(node.value, ast.Name) or isinstance(node.value, instrs.Register):
+        s = visit(self, node.value)
+        if isinstance(node.value, ast.Name) or isinstance(node.value, Register):
             return '%s.x' % s
         else:
             return '%s' % s
@@ -383,39 +335,21 @@ end:\n\
         return 'lt'
 
     def visit_ShiftLeftInstr(self, node):
-        dest_meth = getattr(self, 'visit_'+type(node.dest).__name__)
-        lhs_meth = getattr(self, 'visit_'+type(node.lhs).__name__)
-        rhs_meth = getattr(self, 'visit_'+type(node.rhs).__name__)
-        return '\n\tshl.b32 %s, %s, %s;' % (dest_meth(node.dest), lhs_meth(node.lhs), rhs_meth(node.rhs))
+        return '\n\tshl.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))
                                         
     def visit_ShiftRightInstr(self, node):
-        dest_meth = getattr(self, 'visit_'+type(node.dest).__name__)
-        lhs_meth = getattr(self, 'visit_'+type(node.lhs).__name__)
-        rhs_meth = getattr(self, 'visit_'+type(node.rhs).__name__)
-        return '\n\tshr.b32 %s, %s, %s;' % (dest_meth(node.dest), lhs_meth(node.lhs), rhs_meth(node.rhs))
+        return '\n\tshr.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))
 
     def visit_SetInstr(self, node):
-        lhs_meth = getattr(self, 'visit_'+type(node.lhs).__name__)
-        left_meth = getattr(self, 'visit_'+type(node.left).__name__)
-        right_meth = getattr(self, 'visit_'+type(node.right).__name__)
-        op_name = getattr(self, 'visit_'+ type(node.op).__name__)
-        return '\n\tset.%s.%s.%s %s, %s, %s;' % (op_name(node.op), node.type, node.type, lhs_meth(node.lhs), left_meth(node.left), right_meth(node.right))
+        return '\n\tset.%s.%s.%s %s, %s, %s;' % (visit(self, node.op), node.type, node.type, visit(self, node.lhs), visit(self, node.left), visit(self, node.right))
 
     def visit_SetpInstr(self, node):
-        pred = getattr(self, 'visit_'+type(node.pred).__name__)(node.pred)
-        left_meth = getattr(self, 'visit_'+type(node.left).__name__)
-        right_meth = getattr(self, 'visit_'+type(node.right).__name__)
-        op_name = getattr(self, 'visit_'+ node.op.__name__)
-        return '\n\tsetp.%s.u32 %s, %s, %s;' % (op_name(node.op), pred, left_meth(node.left), right_meth(node.right))
+        pred = visit(self, node.pred)
+        return '\n\tsetp.%s.u32 %s, %s, %s;' % (visit(self, node.op), pred, visit(self, node.left), visit(self, node.right))
 
     def visit_LoadGlobalInstr(self, node):
-        lhs = getattr(self, 'visit_'+type(node.lhs).__name__)(node.lhs)
-        rhs = getattr(self, 'visit_'+type(node.rhs).__name__)(node.rhs)
-        offset = getattr(self, 'visit_'+type(node.offset).__name__)(node.offset)
-        return '\n\tld.global.b32 %s.x, [%s+%s];\n\tmov.b32 %s.y, %s.y;' % (lhs, rhs, offset, lhs, rhs)
+        lhs = visit(self, node.lhs)
+        rhs = visit(self, node.rhs)
+        return '\n\tld.global.b32 %s.x, [%s+%s];\n\tmov.b32 %s.y, %s.y;' % (lhs, rhs, visit(self, node.offset), lhs, rhs)
 
-#    def visit_StoreLocalInstr(self, node):
-#        lhs = getattr(self, 'visit_'+type(node.lhs).__name__)(node.lhs)
-#        rhs = getattr(self, 'visit_'+type(node.rhs).__name__)(node.rhs)
-#        offset = getattr(self, 'visit_'+type(node.offset).__name__)(node.offset)
-#        return '\n\tst.local.v2.b32 [%s+%s], %s;' % (lhs, offset, rhs)
+

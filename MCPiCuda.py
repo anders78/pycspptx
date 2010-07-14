@@ -33,8 +33,8 @@ def producer(job_out, bagsize, bags):
 def worker(job_in, result_out):
    while True:
        cnt=job_in()           #Get task
-       sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), [float(i) for i in range(320000)])
-       result_out((4.0*sum)/320000.0)  #Forward result
+       sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), [float(i) for i in range(40000)])
+       result_out((4.0*sum)/40000.0)  #Forward result
 #       result_out(sum)
 
 
@@ -54,7 +54,7 @@ results=Channel()
 
 start = time()
 Parallel(
-   producer( jobs.writer() , 320000, 1024), #10000, 1000
+   producer( jobs.writer() , 40000, 1024), #10000, 1000
    worker( jobs.reader() ,results.writer()),
    consumer(results.reader()))
 end = time()

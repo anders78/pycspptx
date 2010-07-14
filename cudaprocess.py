@@ -81,34 +81,7 @@ class Process(mp.Process):
 
     def run(self):
         try:
-#            print self.args
-            # Get parameters
-#            for i in self.args:
-#                if isinstance(i, ChannelEndRead):
-#                    #TODO: Faster way to read input?
-#                    c_in = []
-#                    try:
-#                        while True:
-#                            #TODO: Currently everything is transformed to float
-#                            c_in.append(i())
-#                    except ChannelRetireException:
-#                        #TODO: Retire channel after execution
-#                        self.params.append((c_in, i))
-#                elif isinstance(i, ChannelEndWrite):
-#                    #TODO: Currently in-channel must be listed as parameter before out-channel
-#                    if len(c_in) == 0:
-#                        raise TypeError('No input channel read before output')
-#                    else:
-#                        self.params.append((len(c_in)*[0], i))
-#                elif isinstance(i,int) or isinstance(i,float):
-#                    self.params.append((i, type(i).__name__))
-#                else:
-#                    raise TypeError('Unknown type in parameters')
-
-            #self.fn(*self.args, **self.kwargs)
             ptxcompiler.execute(self.fn, self.args)
-
-            raise ChannelRetireException
 
         except ChannelPoisonException, e:
             # look for channels and channel ends

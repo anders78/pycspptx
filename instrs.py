@@ -33,24 +33,8 @@ def letify(expr, k):
         n = generate_var("tmp")
         return instrs.Let(n, expr, k(ast.Name(n, ast.Load())))
 
-#def get_type(expr):
-#    if isinstance(expr, ast.Num):
-#        return type(expr.n).__name__
-#    elif isinstance(expr, ast.Name):
-#        t = var_types.get(str(expr.id))
-#        return t
-#    elif isinstance(expr, instrs.Address):
-#        return 'address'
-#    else:
-#        raise Exception ('Error getting type for %s' % expr)
-
-#def set_type(expr, t):
-#    if isinstance(expr, ast.Name):
-#        var_types[expr.id] = t
-#    elif isinstance(expr, str):
-#        var_types[expr] = t
-#    else:
-#        raise Exception ('Invalid expression %s' % expr)
+def visit(env, *args):
+    return getattr(env, 'visit_'+type(args[0]).__name__)(*args)
 
 def set_list(lhs, typ, size):
     if isinstance(lhs, ast.Name):
@@ -284,21 +268,21 @@ class SetSubscript(ast.AST):
         self.key = key
         self._fields = ('container', 'key', 'val')
 
-class InjectFrom(ast.AST):
+class SetType(ast.AST):
     def __init__(self, typ, arg):
         self.typ = typ
         self.arg = arg
         self._fields = ('typ', 'arg')
     def __repr__(self):
-        return "InjectFrom(%s, %s)" % (self.typ, repr(self.arg))
+        return "SetType(%s, %s)" % (self.typ, repr(self.arg))
 
-class ProjectTo(ast.AST):
+class GetType(ast.AST):
     def __init__(self, typ, arg):
         self.typ = typ
         self.arg = arg
         self._fields = ('typ', 'arg')
     def __repr__(self):
-        return "ProjectTo(%s, %s)" % (self.typ, repr(self.arg))
+        return "GetType(%s, %s)" % (self.typ, repr(self.arg))
 
 class Let(ast.AST):
     def __init__(self, var, rhs, body):

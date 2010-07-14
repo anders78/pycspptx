@@ -35,12 +35,12 @@ def producer(cout, count):
     retire(cout)
 
 #sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), range(cnt))
-@process
+@cudaprocess
 def worker(cin, cout):
     while True:
-        cin()
-        sum = reduce(lambda x,y: y, range(100))
-        cout(sum)
+        arr = [1,2,3,4,5]
+        x = arr[2]*2 + 3
+        cout(x)
 
 @process
 def consumer(cin):
