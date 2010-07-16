@@ -120,10 +120,7 @@ class ExplicateVisitor(ast.NodeVisitor):
                 if isinstance(node.args[0], ast.Num):
                     args = [i.n for i in node.args]
                     elts = [ast.Num(i) for i in range(*args)]
-                    return self.visit_List(ast.List(elts, ast.Load()))
-                else:
-                    args = [visit(self, i) for i in node.args]
-                    return ast.Call(node.func, args, node.keywords, node.starargs, node.kwargs)
+                    return ast.List([ast.Num(len(elts))]+elts, ast.Load())
             elif node.func.id == 'reduce':
                 if not (len(node.args) == 2 and \
                         isinstance(node.args[0], ast.Lambda)):

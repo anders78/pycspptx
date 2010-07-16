@@ -26,33 +26,16 @@ s = "\n\
 	}\n\
 "
 
-@process
-def producer(cout, count):
-    x = 42
-    for i in range(count):
-        cout(x)
-        x = x + 1
-    retire(cout)
-
 #sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), range(cnt))
 @cudaprocess
-def worker(cin, cout):
-    while True:
-        arr = [1,2,3,4,5]
-        x = arr[2]*2 + 3
-        cout(x)
-
-@process
-def consumer(cin):
-    while True:
-        val = cin()
-        print val
+def worker():
+    res = reduce(lambda x,y: y, range(150000))
 
 c1 = Channel()
 c2 = Channel()
 
 start = time.time()
-Parallel(producer(OUT(c1), 64), worker(IN(c1), OUT(c2)), consumer(IN(c2)))
+Parallel(worker())
 end = time.time()
 print 'Time taken=', end-start
 print "Done"
