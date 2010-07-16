@@ -18,14 +18,12 @@ def execute(func, args):
 #    print att
     cuda_args = []
     ptx_args = []
+    retire = poison = False
 
     count = 0
     for i in args:
         if isinstance(i, ChannelEndRead):
             tmp = []
-#            for e in range(threads*blocks):
-#                print "HALLOOOO"
-#                tmp.extend([i()])
             if count == 0: #first channel
                 try:
                     while True:
@@ -72,23 +70,35 @@ def execute(func, args):
     st = ast.parse(inspect.getsource(func))
 
 #    print "\nExplicating"
+#    start = time.time()
     explicator = ExplicateVisitor()
     st = explicator.visit(st)
+#    end = time.time()
+#    print 'Time taken to explicate=', end-start
 
 #    print "\nFlattening"
+#    start = time.time()
     flatten = FlattenVisitor()
     st = flatten.visit(st)
+#    end = time.time()
+#    print 'Time taken to flatten=', end-start
 
 #    print "\nInstruction selection"
+#    start = time.time()
     inst_selector = InstSelectVisitor()
     st = inst_selector.visit(st)
+#    end = time.time()
+#    print 'Time taken to instselect=', end-start
 
-    print "\nGenerating PTX code:"
+#    print "\nGenerating PTX code:"
+#    start = time.time()
     ptx_generator = GenPTXVisitor()
     ptx = ptx_generator.visit(st)
+#    end = time.time()
+#    print 'Time taken to genptx=', end-start
 #    print "\n"+ptx
 
-    print "Loading CUDA module from buffer"
+#    print "Loading CUDA module from buffer"
     #Load cuda module and kernel to execute from generated ptx
 #    cuda.Device(0).make_context(flags=cuda.ctx_flags.SCHED_AUTO)
 #    hModule = cuda.module_from_buffer(t)
@@ -96,14 +106,16 @@ def execute(func, args):
     start = time.time()
     hModule = cuda.module_from_buffer(ptx)
     hKernel = hModule.get_function(instrs.entryFunc)
+#    end = time.time()
+#    print 'Time taken to load module=', end-start
 
     #Execute kernel
-    print "Executing kernel"
-
+#    print "Executing kernel"
+#    start = time.time()
     hKernel(*cuda_args, block=(threads, 1, 1), grid=(blocks,1))
     end = time.time()
-    print 'Time taken=', end-start
-    print "Execution done"
+    print 'Time taken to execute=', end-start
+#    print "Execution done"
     if count > 0:
         if cuda_args[1].array[0] == instrs.tag['float']:
             cuda_args[1].array.dtype = numpy.float32

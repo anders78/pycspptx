@@ -173,8 +173,8 @@ class FlattenVisitor(ast.NodeVisitor):
         return node, []
 
     def visit_List(self, node, simple):
-        stmts = []
-        tmp = generate_var('tmp') #Formerly list
-        return (ast.Name(tmp, ast.Load()), [DeclareArray(ast.Name(tmp, ast.Store()), node.elts)] + stmts)
+#        stmts = []
+        tmp = generate_var('tmp') 
+        return (ast.Name(tmp, ast.Load()), [DeclareArray(ast.Name(tmp, ast.Store()), node.elts)])
 
 

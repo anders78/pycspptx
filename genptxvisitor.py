@@ -132,8 +132,10 @@ start:\n\
 end:\n\
         ret.uni;\n\
 }'
-        for i in node.body:
-            stmts = stmts + visit(self, i)
+        
+#        for i in node.body:
+ #           stmts = stmts + visit(self, i)
+        stmts = stmts + ''.join([visit(self,i) for i in node.body])
         return preamble + self.funcs + stmts
 
     def visit_FunctionDef(self, node):
@@ -152,8 +154,10 @@ end:\n\
                     if instrs.args[i][0] == 'ChannelEndWrite':
                         self.funcs = self.funcs + self.make_ChannelEndWrite(node.args.args[i].id, instrs.args[i][1])
                         stmts = stmts + '\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id)
-            for i in node.body:
-                stmts = stmts + visit(self, i)
+#            for i in node.body:
+#               stmts = stmts + visit(self, i)
+            stmts = stmts + ''.join([visit(self,i) for i in node.body])
+ 
             for i in self.varlist:
                 stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
             self.var_list = old_varlist
@@ -180,8 +184,10 @@ end:\n\
                 if i < len(node.args.args)-1:
                     args = args + ','
             body = ''
-            for i in node.body:
-                body = body + visit(self, i)
+#            for i in node.body:
+#                body = body + visit(self, i)
+            body = body + ''.join([visit(self,i) for i in node.body])
+
             self.funcs = self.funcs + '\n.func (%s) %s (%s){' % ('.reg .v2 .b32 %rval', node.name, args)
             self.var_list = old_varlist
             stmts = stmts + '\n.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;'
@@ -200,10 +206,12 @@ end:\n\
         else:
             raise Exception ('Unsupported element type in list %s' % node.name.id)
 
+#return ''.join([`num` for num in range(loop_count)])
+
         elems = '{'+str(l)
-        for i in node.elems[1:]:
-            elems = elems + ', '+str(i.n)
-        elems = elems +'}'
+#        for i in node.elems[1:]:
+ #           elems = elems + ', '+str(i.n)
+        elems = elems + ''.join([','+`i.n` for i in node.elems[1:]]) +'}'
         string = '\n\t.global %s %s[%s] = %s;' % (typ, name+'_local', len(node.elems), elems)
         string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
         string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__])
