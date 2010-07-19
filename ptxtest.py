@@ -29,7 +29,8 @@ s = "\n\
 #sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), range(cnt))
 @cudaprocess
 def worker():
-    res = reduce(lambda x,y: y, range(150000))
+    l = [1,2,3]
+    a = l[0]
 
 c1 = Channel()
 c2 = Channel()

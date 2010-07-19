@@ -60,7 +60,7 @@ varlist = {}
 colornames = {}
 predlist = []
 reserved_registers = []
-builtin_functions = ['range', 'reduce']
+builtin_functions = {'range':False, 'reduce':False, 'random':False}
 shift = { 'int' : 2, 'bool' : 2, 'float': 2, 'big' : 2 }
 tag = { 'int' : 0, 'bool' : 1, 'float': 2, 'big' : 3 }
 mask = 3
@@ -96,13 +96,6 @@ class DivInstr(ast.AST):
         self.rhs = rhs
         self.type = typ
         self._fields = ('lhs', 'rhs')
-
-#class IntAdressMultInstr(ast.AST):
-#    def __init__(self, dest, lhs, rhs):
-#        self.dest = dest
-#        self.lhs = lhs
-#        self.rhs = rhs
-#        self._fields = ('lhs', 'rhs')
 
 class USubInstr(ast.AST):
     def __init__(self, lhs, rhs, typ):
@@ -183,6 +176,13 @@ class BinOp(ast.AST):
         self.type = typ
         self._fields = ('lhs', 'op', 'rhs')
 
+#class UnaryOpExpr(ast.AST):
+#    def __init__(self, dest, op, operand):
+#       self.dest = dest
+#        self.op = op
+#        self.operand = operand
+#        self._fields('operand')
+
 class BinOpExpr(ast.AST):
     def __init__(self, dest, left, op, right, typ):
         self.dest = dest
@@ -207,24 +207,6 @@ class Val(ast.AST):
         self.value = value
         self._fields = ('value')
 
-#class EntryFunctionDef(ast.AST):
-#    def __init__(self, name, args, body, decorator_list):
-#        self.name = name
-#        self.args = args
-#        self.body = body
-#        self.decorator_list = decorator_list
-#        self._fields = ('name', 'args', 'body', 'decorator_list')
-
-#class ImmAddress(ast.AST):
-#    def __init__(self, val):
-#        self.n = val
-#        self._fields = ('val')
-
-#class Address(ast.AST):
-#    def __init__(self, name):
-#        self.id = name
-#        self._fields = ('id')
-
 class ShiftLeftInstr(ast.AST):
     def __init__(self, dest, lhs, rhs):
         self.dest = dest
@@ -238,22 +220,6 @@ class ShiftRightInstr(ast.AST):
         self.lhs = lhs
         self.rhs = rhs
         self._fields = ('dest', 'lhs', 'rhs')
-
-#class SetpNeqInstr(ast.AST):
-#    def __init__(self, pred, testa, testb):
-#        self.pred = pred
-#        self.testa = testa
-#        self.testb = testb
-#        self._fields = ('pred', 'testa', 'testb')
-
-#class SelpInstr(ast.AST):
-#    def __init__(self, res, body, orelse, pred):
-#        self.res = res
-#        self.body = body
-#        self.orelse = orelse
-#        self.pred = pred
-#        self._fields = ('res', 'body', 'orelse', 'pred')
-
 
 class Register(ast.AST):
     def __init__(self, name, bits):
@@ -293,29 +259,11 @@ class Let(ast.AST):
     def __repr__(self):
         return "Let(%s, %s, %s)" % (self.var, repr(self.rhs), repr(self.body))
 
-#class GetTag(ast.AST):
-#    def __init__(self, arg):
-#        self.arg = arg
-#        self._fields = ('arg')
-#    def __repr__(self):
-#        return "GetTag(%s)" % repr(self.arg)
-
-#class DeclareArray(ast.AST):
-#    def __init__(self, name, size):
-#        self.name = name
-#        self.size = size
-#        self._fields = ('name', 'size')
-
 class DeclareArray(ast.AST):
     def __init__(self, name, elems):
         self.name = name
         self.elems = elems
         self._fields = ('name', 'size')
-
-#class DeclareGlobal(ast.AST):
-#    def __init__(self, name):
-#        self.name = name
-#        self._fields = ('name')
 
 class LoadParam(ast.AST):
     def __init__(self, reg, param):

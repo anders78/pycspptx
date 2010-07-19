@@ -75,6 +75,9 @@ class InstSelectVisitor(ast.NodeVisitor):
             stmts = stmts + visit(self, i)
         return [ast.FunctionDef(lhs, node.args, stmts, [])]
         
+#    def visit_UnaryOp(self, node, lhs):
+#        return [UnaryOpExpr(Val(ast.Name(lhs, ast.Store())), node.op, node.operand)]
+
     def visit_BinOp(self, node, lhs):
         if isinstance(node.op, ast.Pow):
             start = generate_var('label')

@@ -8,70 +8,20 @@ class GenPTXVisitor(ast.NodeVisitor):
         self.varlist = {}
 
     def make_ChannelEndRead(self, name, typ):
-        func = '\n.reg .b64 __cuda__%s_global;\n' % name
-        func = func + '.func (.reg .v2 .b32 rval) %s (){\n' % name
-        func = func + '\tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n' % (name, name)
-        func = func + '\tld.global.b32 rval.x, [__cuda__%s_global];\n' % name
-        func = func + '\tmov.s32 rval.y, %s;}\n' % instrs.tag[typ]
+        func = '\n.reg .b64 __cuda__%s_global;\n\
+        .func (.reg .v2 .b32 rval) %s (){\n\
+        \tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n\
+        \tld.global.b32 rval.x, [__cuda__%s_global];\n\
+        \tmov.s32 rval.y, %s;}\n' % (name, name, name, name, name, instrs.tag[typ])
         return func
 
     def make_ChannelEndWrite(self, name, typ):
-        func = '\n.reg .b64 __cuda__%s_global;\n' % name
-        func = func + '.func () %s (.reg .v2 .b32 val){\n' % name
-        func = func + '\tst.global.b32 [__cuda__%s_global], val.y;\n' % name
-        func = func + '\tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n' % (name, name)
-        func = func + '\tst.global.b32 [__cuda__%s_global+4], val.x;\n}' % name
+        func = '\n.reg .b64 __cuda__%s_global;\n\
+        .func () %s (.reg .v2 .b32 val){\n\
+        \tst.global.b32 [__cuda__%s_global], val.y;\n\
+        \tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n\
+        \tst.global.b32 [__cuda__%s_global+4], val.x;\n}' % (name, name, name, name, name, name)
         return func
-#OLD RANDOM FUNCTION    
-#.func (.reg .v2 .b32 rval) random ()\n\
-#{\n\
-#        .reg .u64 localtmp;\n\
-#        .reg .f64 localtmp_f;\n\
-#        .reg .u32 k;\n\
-#//        add.u32 %seed, %seed, %t_id;\n\
-#        mul.wide.u32 localtmp, 1664525, %seed;\n\
-#        add.u64 localtmp, localtmp, 1013904223;\n\
-#        rem.u64 localtmp, localtmp, 4294967296;\n\
-#        cvt.u32.u64 %seed, localtmp;\n\
-#// //  k = floor((double) y*64/4294967296); \n\
-#//        mul.wide.u32 localtmp, %lcg_y, 64;\n\
-#//        cvt.rn.f64.u64 localtmp_f, localtmp;\n\
-#//        div.f64 localtmp_f, localtmp_f, 4294967296.0;\n\
-#//       cvt.rzi.u32.f64 k, localtmp_f;\n\
-#// //  y = j[k];\n\
-#//        mul.lo.u32 k, k, 4;\n\
-#//        add.u32 %lcg_j, %lcg_j, k;\n\
-#//        ld.global.u32 %lcg_y, [%lcg_j];\n\
-#// //  j[k] = i;\n\
-#//        st.global.u32 [%lcg_j], %seed;\n\
-#        cvt.rn.f32.u32 rval.x, %seed;\n\
-#        div.approx.f32 rval.x, rval.x, 4294967295.0;\n\
-#        mov.u32 rval.y, 2;\n\
-#//        mov.u32 rval.x, %seed;\n\
-#        ret.uni;\n\
-#}\n\
-
-#define a 16807
-#define m 2147483647
-#define q 127773
-#define r 2836
-#define conv (1.0/(m-1))
-#
-#long i
-#
-#double drandom()
-#{
-#  long l;
-#
-#  l = i/q;
-#  i = a*(i-q*l)-r*l;
-#  if (i<0) i+= m;
-# 
-#  k = floor((double) y*N/m);
-#  y = j[k];
-#  j[k] = i;
-#  return conv*(y-1);
-#}
 
     def visit_Module(self, node):
         stmts = ''
@@ -80,7 +30,9 @@ class GenPTXVisitor(ast.NodeVisitor):
 .reg .b32 divhelp<3>;\n\
 .reg .b64 %tid_offset;\n\
 .reg .b32 %t_id;\n\
-.reg .v2 .b32 %seed;\n\
+.reg .v2 .b32 %seed;\n'
+        if builtin_functions['random']:
+            self.funcs = self.funcs + '\
 .func (.reg .v2 .b32 rval) random ()\n\
 {\n\
         .reg .u64 localtmp;\n\
@@ -94,8 +46,10 @@ class GenPTXVisitor(ast.NodeVisitor):
         div.approx.f32 rval.x, rval.x, 4294967295.0;\n\
         mov.u32 rval.y, 2;\n\
         ret;\n\
-}\n\
-.func (.reg .v2 .b32 %rval) lambda (.reg .v2 .b32 x, .reg .v2 .b32 y)\n\
+}\n'
+        if builtin_functions['reduce']:
+            self.funcs = self.funcs + '\
+.func (.reg .v2 .b32 %rval) %lambda (.reg .v2 .b32 x, .reg .v2 .b32 y)\n\
 .func (.reg .v2 .b32 rval) reduce (.reg .v2 .b32 list){\n\
         .reg .u32 len;\n\
         .reg .b32 tmp;\n\
@@ -105,9 +59,9 @@ class GenPTXVisitor(ast.NodeVisitor):
         .reg .pred run;\n\
         .reg .pred typfloat;\n\
         setp.eq.u32 typfloat, list.y, 2;\n\
-@typfloat bra.uni float;\n\
+@typfloat bra float;\n\
         ld.global.u32 len, [list];\n\
-        bra.uni typend;\n\
+        bra typend;\n\
 float:\n\
         ld.global.f32 tmp, [list];\n\
         cvt.rni.u32.f32 len, tmp;\n\
@@ -120,21 +74,19 @@ typend:\n\
         ld.global.b32 param1.x, [list];\n\
         mov.u32 param1.y, list.y;\n\
         add.u32 list.x, list.x, 4;\n\
-        call.uni (rval), lambda, (param0, param1);\n\
+        call (rval), %lambda, (param0, param1);\n\
 start:\n\
         setp.lt.u32 run, pos, len;\n\
-  @!run bra.uni end;\n\
+  @!run bra end;\n\
         ld.global.b32 param1.x, [list];\n\
-        call.uni (rval), lambda, (rval, param1);\n\
+        call (rval), %lambda, (rval, param1);\n\
         add.u32 pos, pos, 1;\n\
         add.u32 list.x, list.x, 4;\n\
-  @run bra.uni start;\n\
+  @run bra start;\n\
 end:\n\
-        ret.uni;\n\
+        ret;\n\
 }'
         
-#        for i in node.body:
- #           stmts = stmts + visit(self, i)
         stmts = stmts + ''.join([visit(self,i) for i in node.body])
         return preamble + self.funcs + stmts
 
@@ -154,21 +106,22 @@ end:\n\
                     if instrs.args[i][0] == 'ChannelEndWrite':
                         self.funcs = self.funcs + self.make_ChannelEndWrite(node.args.args[i].id, instrs.args[i][1])
                         stmts = stmts + '\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id)
-#            for i in node.body:
-#               stmts = stmts + visit(self, i)
+
             stmts = stmts + ''.join([visit(self,i) for i in node.body])
  
             for i in self.varlist:
                 stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
             self.var_list = old_varlist
-	    stmts = '.reg .b32 %r<3>;\n\
+	    inits = '\n.reg .b32 %r<3>;\n\
 \t.reg .b16 %rh<3>;\n\
 \tmov.u16 %rh1, %ctaid.x;\n\
 \tmov.u16 %rh2, %ntid.x;\n\
 \tmul.wide.u16 %r1, %rh1, %rh2;\n\
 \tcvt.u32.u16 %r2, %tid.x;\n\
 \tadd.u32 %t_id, %r2, %r1;\n\
-\tmul.wide.u32 %tid_offset, %t_id, 4;\n\
+\tmul.wide.u32 %tid_offset, %t_id, 4;\n'
+            if builtin_functions['random']:
+                stmts = inits + '\
 \tadd.u32 %r0, %t_id, ' + str(randint(0,4294967295)) + ';\n\
 \tmov.u32 %seed.x, %r0;\n\
 \tcall (%seed), random, ();\n\
@@ -178,17 +131,16 @@ end:\n\
             stmts = '\n\t.reg .pred %pred<'+str(instrs.predcounter)+'>;'  + stmts
             return '\n.entry %s (%s){%s\n}' % (node.name, args, stmts)
         else:
-            for i in range(len(node.args.args)):
-                args = args + '\n\t.reg .v2 .b32 ' + node.args.args[i].id
-                self.varlist[node.args.args[i].id] = 'b32'
-                if i < len(node.args.args)-1:
-                    args = args + ','
-            body = ''
-#            for i in node.body:
-#                body = body + visit(self, i)
-            body = body + ''.join([visit(self,i) for i in node.body])
+            func_args_list = [i.id for i in node.args.args]
+            args = ', '.join(['\n\t.reg .v2 .b32 ' + i for i in func_args_list])
+
+            body = ''.join([visit(self,i) for i in node.body])
 
             self.funcs = self.funcs + '\n.func (%s) %s (%s){' % ('.reg .v2 .b32 %rval', node.name, args)
+            for i in self.varlist:
+                if i not in func_args_list:
+                    stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
+
             self.var_list = old_varlist
             stmts = stmts + '\n.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;'
             stmts = stmts + '\n.reg .pred %pred<'+str(instrs.predcounter)+'>;'
@@ -206,12 +158,7 @@ end:\n\
         else:
             raise Exception ('Unsupported element type in list %s' % node.name.id)
 
-#return ''.join([`num` for num in range(loop_count)])
-
-        elems = '{'+str(l)
-#        for i in node.elems[1:]:
- #           elems = elems + ', '+str(i.n)
-        elems = elems + ''.join([','+`i.n` for i in node.elems[1:]]) +'}'
+        elems = '{' + str(l) + ', ' + ', '.join([`i.n` for i in node.elems[1:]]) +'}'
         string = '\n\t.global %s %s[%s] = %s;' % (typ, name+'_local', len(node.elems), elems)
         string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
         string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__])
@@ -255,7 +202,7 @@ end:\n\
                 '\n\tmov.b32 %s, divhelp0;' % (dest)
             return s
         else:
-            raise Exception('Binary operation %s not supported' % type(node.op).__name__)
+            raise Exception('Binary operation %s (%s) not supported' % (type(node.op).__name__, node.type))
         return '\n\t%s.%s %s, %s, %s;' % (op, node.type, dest, left, right)
 
     def visit_OrInstr(self, node):
@@ -276,10 +223,10 @@ end:\n\
             pred = '@' + pred_name
         else:
             pred = '@!' + pred_name
-        return '\n%s\tbra.uni %s;' % (pred, label)
+        return '\n%s\tbra %s;' % (pred, label)
 
     def visit_ReturnInstr(self, node):
-        return '\n\tret.uni;'
+        return '\n\tret;'
 
     def visit_CallInstr(self, node):
         args = ''
@@ -289,9 +236,9 @@ end:\n\
                 args = args + ', '
         if node.lhs:
             lhs = visit(self, node.lhs)
-            return '\n\tcall.uni (%s), %s, (%s);' % (lhs, node.funcname, args)
+            return '\n\tcall (%s), %s, (%s);' % (lhs, node.funcname, args)
         else:
-            return '\n\tcall.uni %s, (%s);' % (node.funcname, args)
+            return '\n\tcall %s, (%s);' % (node.funcname, args)
 
     def visit_Num(self, node):
         if isinstance(node.n, int):
@@ -336,11 +283,20 @@ end:\n\
     def visit_Eq(self, node):
         return 'eq'
 
-    def visit_Gt(self, node):
-        return 'gt'
+    def visit_NotEq(self, node):
+        return 'ne'
 
     def visit_Lt(self, node):
         return 'lt'
+
+    def visit_LtE(self, node):
+        return 'le'
+
+    def visit_Gt(self, node):
+        return 'gt'
+
+    def visit_GtE(self, node):
+        return 'ge'
 
     def visit_ShiftLeftInstr(self, node):
         return '\n\tshl.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))

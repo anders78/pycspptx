@@ -89,6 +89,17 @@ class ExplicateVisitor(ast.NodeVisitor):
                              SetType('float', BinOp(Val(l), op, Val(r), 'f32'))) #Else
         return letify(left, lambda l: letify(right, lambda r: result(l, r)))
 
+    def visit_UnaryOp(self, node):
+        if isinstance(node.operand, ast.Num) and isinstance(node.operand.n, int):
+            if isinstance(node.op, ast.USub):
+                return SetType('int', ast.Num(int(- node.operand.n)))
+            else:
+                raise Exception('Unary operation %s not supported' % type(node.op).__name__)
+        else:
+            #This branch not working at the moment.
+            expr = visit(self, node.operand)
+            return SetType('int', ast.UnaryOp(node.op, GetType('int', expr)))
+
     def visit_Compare(self, node):
         left = visit(self, node.left)
         right = visit(self, node.comparators[0])
@@ -99,23 +110,13 @@ class ExplicateVisitor(ast.NodeVisitor):
                              SetType('float', Compare(Val(l), op, Val(r), 'f32'))) #Else
         return letify(left, lambda l: letify(right, lambda r: result(l, r)))
 
-    def visit_UnaryOp(self, node):
-        if isinstance(node.operand, ast.Num) and isinstance(node.operand.n, int):
-            if isinstance(node.op, ast.USub):
-                return SetType('int', ast.Num(int(- node.operand.n)))
-            else:
-                raise Exception('Unary operation %s not supported' % type(node.op).__name__)
-        else:
-            #This branch not working at the moment.
-            expr = visit(self, node.operand)
-            return SetType('int', ast.UnaryOp(GetType('int', expr)))
-
     def visit_Lambda(self, node):
         return ast.Lambda(node.args, visit(self, node.body))
 
-    #Call(expr func, expr* args, keyword* keywords,expr? starargs, expr? kwargs)
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name) and node.func.id in builtin_functions:
+            #Set builtin to true
+            builtin_functions[node.func.id] = True
             if node.func.id == 'range':
                 if isinstance(node.args[0], ast.Num):
                     args = [i.n for i in node.args]
@@ -125,6 +126,12 @@ class ExplicateVisitor(ast.NodeVisitor):
                 if not (len(node.args) == 2 and \
                         isinstance(node.args[0], ast.Lambda)):
                     raise Exception('Wrong input for builtin function reduce')
+                else:
+                    args = [visit(self, i) for i in node.args]
+                    return ast.Call(node.func, args, node.keywords, node.starargs, node.kwargs)
+            elif node.func.id == 'random':
+                if not len(node.args) == 0:
+                    raise Exception('No input allowed for builtin function random')
                 else:
                     args = [visit(self, i) for i in node.args]
                     return ast.Call(node.func, args, node.keywords, node.starargs, node.kwargs)

@@ -1,7 +1,8 @@
 import inspect
 import ast
-import pycuda.driver as cuda
 import pycuda.autoinit
+import pycuda.driver as cuda
+#import pycuda.tools as tools
 import numpy
 from pycsp.processes.channelend import ChannelEndRead, ChannelEndWrite
 from explicatevisitor import *
@@ -11,11 +12,21 @@ from genptxvisitor import *
 import instrs
 
 from pycsp.processes.channel import ChannelRetireException, ChannelPoisonException
-
+global context
 def execute(func, args):
+#    cuda.init()
+#    print cuda.get_driver_version()
+#    print pycuda.VERSION_TEXT
 #    dev = cuda.Device(0)
 #    att = dev.get_attributes()
 #    print att
+#    from pycuda.tools import make_default_context
+#    context = make_default_context()
+#    device = context.get_device()
+#    import atexit
+#    atexit.register(context.pop)
+#    import pycuda.autoinit
+
     cuda_args = []
     ptx_args = []
     retire = poison = False
@@ -154,8 +165,10 @@ def calcThreadsnBlocks(count):
         t = 128
     elif count % 64 == 0:
         t = 64
+    elif count % 32 == 0:
+        t = 32
     else:
-        raise Exception('Number of input must be divisible by 64!')
+        raise Exception('Number of input must be divisible by 32!')
     return (t, count / t)
 
 
