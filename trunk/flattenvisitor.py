@@ -12,7 +12,7 @@ class FlattenVisitor(ast.NodeVisitor):
 
     #### Statements ####
     def visit_Assign(self, node):
-        (rhs,stmts) = visit(self, node.value, False)#meth(node.value, False)
+        (rhs,stmts) = visit(self, node.value, False)
         return stmts + [ast.Assign(node.targets, rhs)]
 
     def visit_Expr(self, node):
@@ -72,7 +72,7 @@ class FlattenVisitor(ast.NodeVisitor):
     def visit_Lambda(self, node, simple):
         (arg, stmts) = visit(self, node.body, True)
         if simple:
-            tmp = 'lambda'
+            tmp = '%lambda'
             #Make sure flatten doesnt move stmts out of the function
             return (ast.Name(tmp, ast.Load()), [ast.Assign([ast.Name(tmp, ast.Store())], ast.Lambda(node.args, stmts + [ast.Return(arg)]))])
         else:
@@ -105,13 +105,13 @@ class FlattenVisitor(ast.NodeVisitor):
         else:
             return (BinOp(left, node.op, right, node.type), stmt1 + stmt2)
 
-    def visit_UnaryOp(self, node, simple):
-        (expr,stmts) = visit(self, node.operand, True)
-        if simple:
-            tmp = generate_var('tmp')
-            return (ast.Name(tmp, ast.Load()), stmts + [ast.Assign([ast.Name(tmp, ast.Store())], ast.UnaryOp(node.op, expr))])
-        else:
-            return (ast.UnaryOp(node.op, expr), stmts)
+#    def visit_UnaryOp(self, node, simple):
+#        (expr,stmts) = visit(self, node.operand, True)
+#        if simple:
+#            tmp = generate_var('tmp')
+#            return (ast.Name(tmp, ast.Load()), stmts + [ast.Assign([ast.Name(tmp, ast.Store())], ast.UnaryOp(node.op, expr))])
+#        else:
+#            return (ast.UnaryOp(node.op, expr), stmts)
 
     def visit_Let(self, node, simple):
         (rhs_res, rhs_stmt) = visit(self, node.rhs, False)

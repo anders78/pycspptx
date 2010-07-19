@@ -45,7 +45,7 @@ def cudaprocess(func):
         raise Exception('The @cudaprocess decorator is not supported in win32.')
 
     def _call(*args, **kwargs):
-        return Process(func, *args, **kwargs)
+        return CudaProcess(func, *args, **kwargs)
     return _call
 
 def io(func):
@@ -56,7 +56,7 @@ def io(func):
     return func
 
 # Classes
-class Process(mp.Process):
+class CudaProcess(mp.Process):
     """ Process(...)
     """
     def __init__(self, fn, *args, **kwargs):
@@ -125,11 +125,11 @@ class Process(mp.Process):
 
     # syntactic sugar:  Process() * 2 == [Process<1>,Process<2>]
     def __mul__(self, multiplier):
-        return [self] + [Process(self.fn, *self.__mul_channel_ends(self.args), **self.__mul_channel_ends(self.kwargs)) for i in range(multiplier - 1)]
+        return [self] + [CudaProcess(self.fn, *self.__mul_channel_ends(self.args), **self.__mul_channel_ends(self.kwargs)) for i in range(multiplier - 1)]
 
     # syntactic sugar:  2 * Process() == [Process<1>,Process<2>]
     def __rmul__(self, multiplier):
-        return [self] + [Process(self.fn, *self.__mul_channel_ends(self.args), **self.__mul_channel_ends(self.kwargs)) for i in range(multiplier - 1)]
+        return [self] + [CudaProcess(self.fn, *self.__mul_channel_ends(self.args), **self.__mul_channel_ends(self.kwargs)) for i in range(multiplier - 1)]
 
     # Copy lists and dictionaries
     def __mul_channel_ends(self, args):
