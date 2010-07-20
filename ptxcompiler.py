@@ -2,7 +2,6 @@ import inspect
 import ast
 import pycuda.autoinit
 import pycuda.driver as cuda
-#import pycuda.tools as tools
 import numpy
 from pycsp.processes.channelend import ChannelEndRead, ChannelEndWrite
 from explicatevisitor import *
@@ -12,27 +11,74 @@ from genptxvisitor import *
 import instrs
 
 from pycsp.processes.channel import ChannelRetireException, ChannelPoisonException
-global context
-def execute(func, args):
-#    cuda.init()
-#    print cuda.get_driver_version()
-#    print pycuda.VERSION_TEXT
-#    dev = cuda.Device(0)
-#    att = dev.get_attributes()
-#    print att
-#    from pycuda.tools import make_default_context
-#    context = make_default_context()
-#    device = context.get_device()
-#    import atexit
-#    atexit.register(context.pop)
-#    import pycuda.autoinit
 
+#Handles arguments, applies compiler passes to function, and executes resulting
+#PTX code on the device
+def execute(func, args):
+    #Handle arguments
+    cuda_args, count, retire, poison = handle_args(args)
+
+    #Calculate threads and blocks
+    (threads, blocks) = calcThreadsnBlocks(count)
+
+    #Parse source code of function to create AST
+    st = ast.parse(inspect.getsource(func))
+
+    #Explicate AST
+    explicator = ExplicateVisitor()
+    st = explicator.visit(st)
+
+    #Flatten explicated AST
+    flatten = FlattenVisitor()
+    st = flatten.visit(st)
+
+    #Create AST of PTX instruction nodes
+    inst_selector = InstSelectVisitor()
+    st = inst_selector.visit(st)
+
+    #Generate PTX string from AST of 
+    #instruction nodes
+    ptx_generator = GenPTXVisitor()
+    ptx = ptx_generator.visit(st)
+
+    #Load CUDA module from PTX string
+    hModule = cuda.module_from_buffer(ptx)
+    #Set entry function
+    hKernel = hModule.get_function(instrs.entryFunc)
+
+    #Execute kernel
+    hKernel(*cuda_args, block=(threads, 1, 1), grid=(blocks,1))
+
+    #Pass outputs on to outputchannels. 
+    #Check types, change output to
+    #float if necessary
+    if count > 0:
+        if cuda_args[1].array[0] == instrs.tag['float']:
+            cuda_args[1].array.dtype = numpy.float32
+        for i in range(len(args)):
+            if isinstance(args[i], ChannelEndWrite):
+                for j in cuda_args[i].array[1:]:
+                    args[i](j)
+    if retire:
+        raise ChannelRetireException  
+    elif poison:
+        raise ChannelPoisonException
+
+#Handle arguments. Important! Input channels must be placed before output channels!
+#Also, number of elements recieved on input, must be the same as the number
+#of elements sent on output.
+def handle_args(args):
+    #cuda_args are the arguments placed in a NumPy array, and passed to the device
     cuda_args = []
-    ptx_args = []
+
+    #compiler_args are arguments passed to the compiler, describing the types
+    #of the cuda_args
+    compiler_args = []
+    count = 0
     retire = poison = False
 
-    count = 0
     for i in args:
+        #Handle ChannelEndRead
         if isinstance(i, ChannelEndRead):
             tmp = []
             if count == 0: #first channel
@@ -49,109 +95,28 @@ def execute(func, args):
             
             if isinstance(tmp[0], int):
                 cuda_args.append(cuda.In(numpy.array(tmp, numpy.int32)))
-                ptx_args.append(['ChannelEndRead', 'int'])
+                compiler_args.append(['ChannelEndRead', 'int'])
             elif isinstance(tmp[0], float):
                 cuda_args.append(cuda.In(numpy.array(tmp, numpy.float32)))
-                ptx_args.append(['ChannelEndRead', 'float'])
-#            ptx_args.append(['','ChannelEndRead', tmp])
-
+                compiler_args.append(['ChannelEndRead', 'float'])
+        #Handle ChannelEndWrite
         elif isinstance(i, ChannelEndWrite):
-            #TODO: Get type for output
             if count == 0:
                 raise Exception('Read channels must be placed before write channels!')
             else:
                 cuda_args.append(cuda.Out(numpy.array((count+1)*[0], numpy.int32)))
-                ptx_args.append(['ChannelEndWrite', 'int'])
-                #cuda_args.append(cuda.Out(numpy.array((threads*blocks+1)*[0], numpy.int32)))
-                #ptx_args.append(['ChannelEndWrite', 'int'])
+                compiler_args.append(['ChannelEndWrite', 'int'])
+        #Handle int argument
         elif isinstance(i, int):
-            ptx_args.append(['int',i])
+            compiler_args.append(['int',i])
+        #Handle float argument
         elif isinstance(i, float):
-            ptx_args.append(['float',i])
+            compiler_args.append(['float',i])
         else:
             raise Exception('Unknown argument type %s' %i)
-    instrs.args = ptx_args
-
-#    threads = 1
-#    blocks = 1
-    (threads, blocks) = calcThreadsnBlocks(count)
-#    print threads, blocks
-#    print "Running with threads = %s and blocks = %s" % (threads, blocks)
-    #Make abstract syntax tree and create ptx from function
-    st = ast.parse(inspect.getsource(func))
-
-#    print "\nExplicating"
-#    start = time.time()
-    explicator = ExplicateVisitor()
-    st = explicator.visit(st)
-#    end = time.time()
-#    print 'Time taken to explicate=', end-start
-
-#    print "\nFlattening"
-#    start = time.time()
-    flatten = FlattenVisitor()
-    st = flatten.visit(st)
-#    end = time.time()
-#    print 'Time taken to flatten=', end-start
-
-#    print "\nInstruction selection"
-#    start = time.time()
-    inst_selector = InstSelectVisitor()
-    st = inst_selector.visit(st)
-#    end = time.time()
-#    print 'Time taken to instselect=', end-start
-
-#    print "\nGenerating PTX code:"
-#    start = time.time()
-    ptx_generator = GenPTXVisitor()
-    ptx = ptx_generator.visit(st)
-#    end = time.time()
-#    print 'Time taken to genptx=', end-start
-#    print "\n"+ptx
-
-#    print "Loading CUDA module from buffer"
-    #Load cuda module and kernel to execute from generated ptx
-#    cuda.Device(0).make_context(flags=cuda.ctx_flags.SCHED_AUTO)
-#    hModule = cuda.module_from_buffer(t)
-#    hKernel = hModule.get_function('worker')
-    start = time.time()
-    hModule = cuda.module_from_buffer(ptx)
-    hKernel = hModule.get_function(instrs.entryFunc)
-#    end = time.time()
-#    print 'Time taken to load module=', end-start
-
-    #Execute kernel
-#    print "Executing kernel"
-#    start = time.time()
-    hKernel(*cuda_args, block=(threads, 1, 1), grid=(blocks,1))
-    end = time.time()
-    print 'Time taken to execute=', end-start
-#    print "Execution done"
-    if count > 0:
-        if cuda_args[1].array[0] == instrs.tag['float']:
-            cuda_args[1].array.dtype = numpy.float32
-    #    print cuda_args[1].array[1:]
-        for i in range(len(args)):
-            if isinstance(args[i], ChannelEndWrite):
-                for j in cuda_args[i].array[1:]:
-                    args[i](j)
-    if retire:
-        raise ChannelRetireException  
-    elif poison:
-        raise ChannelPoisonException
-#    print "cuda_args", cuda_args[1].array[1:]
-#    print "ptx_args", ptx_args[1]
-        
-#    dev = cuda.Device(0)
-#    att = dir(hKernel)#.get_attribute(NUM_REGS)
-#    print "Registers used:", hKernel.num_regs
-
-def message_handler(compile_success_bool, info_str, error_str):
-    if compile_success_bool:
-        print "Kernel compiled successfully"
-    else:
-        print "Info:", info_str
-        print "Error:", error_str
+    #Pass compiler_args to instrs helper.
+    instrs.args = compiler_args
+    return cuda_args, count, retire, poison
 
 def calcThreadsnBlocks(count):
     #Divide into blocks of 512 threads each
