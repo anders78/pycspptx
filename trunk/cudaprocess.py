@@ -81,6 +81,7 @@ class CudaProcess(mp.Process):
 
     def run(self):
         try:
+            #Pass function and arguments to the PTX compiler
             ptxcompiler.execute(self.fn, self.args)
 
         except ChannelPoisonException, e:

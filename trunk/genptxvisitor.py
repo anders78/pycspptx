@@ -1,18 +1,30 @@
 import ast
 from instrs import *
-import time
 from random import *
+from builtin_defs import *
 
+###################################################
+### GenPTXVisitor                               ###
+### Input: An AST of PTX instructions           ###
+### Output: A syntactically correct PTX string  ###
+###                                             ###
+### All nodes return a string, containing a PTX ###
+### representation of the given node            ###
+###################################################
 class GenPTXVisitor(ast.NodeVisitor):
     def __init__(self):
         self.varlist = {}
+        self.str_lst = []
 
+    ########################
+    ### Helper functions ###
+    ########################
     def make_ChannelEndRead(self, name, typ):
         func = '\n.reg .b64 __cuda__%s_global;\n\
         .func (.reg .v2 .b32 rval) %s (){\n\
         \tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n\
         \tld.global.b32 rval.x, [__cuda__%s_global];\n\
-        \tmov.s32 rval.y, %s;}\n' % (name, name, name, name, name, instrs.tag[typ])
+        \tmov.s32 rval.y, %s;\n}\n' % (name, name, name, name, name, instrs.tag[typ])
         return func
 
     def make_ChannelEndWrite(self, name, typ):
@@ -20,131 +32,120 @@ class GenPTXVisitor(ast.NodeVisitor):
         .func () %s (.reg .v2 .b32 val){\n\
         \tst.global.b32 [__cuda__%s_global], val.y;\n\
         \tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n\
-        \tst.global.b32 [__cuda__%s_global+4], val.x;\n}' % (name, name, name, name, name, name)
+        \tst.global.b32 [__cuda__%s_global+4], val.x;\n}\n' % (name, name, name, name, name, name)
         return func
 
     def visit_Module(self, node):
-        stmts = ''
-        preamble = '\n.version 2.0\n.target sm_20\n'
-        self.funcs = '\
+        #Append module preamble, as well as global variables
+        self.str_lst.append('\
+\n.version 2.0\n.target sm_20\n\
 .reg .b32 divhelp<3>;\n\
 .reg .b64 %tid_offset;\n\
 .reg .b32 %t_id;\n\
-.reg .v2 .b32 %seed;\n'
-        if builtin_functions['random']:
-            self.funcs = self.funcs + '\
-.func (.reg .v2 .b32 rval) random ()\n\
-{\n\
-        .reg .u64 localtmp;\n\
-        .reg .f64 localtmp_f;\n\
-        .reg .u32 k;\n\
-        mul.wide.u32 localtmp, 1664525, %seed.x;\n\
-        add.u64 localtmp, localtmp, 1013904223;\n\
-        rem.u64 localtmp, localtmp, 4294967296;\n\
-        cvt.u32.u64 %seed.x, localtmp;\n\
-        cvt.rn.f32.u32 rval.x, %seed.x;\n\
-        div.approx.f32 rval.x, rval.x, 4294967295.0;\n\
-        mov.u32 rval.y, 2;\n\
-        ret;\n\
-}\n'
-        if builtin_functions['reduce']:
-            self.funcs = self.funcs + '\
-.func (.reg .v2 .b32 %rval) %lambda (.reg .v2 .b32 x, .reg .v2 .b32 y)\n\
-.func (.reg .v2 .b32 rval) reduce (.reg .v2 .b32 list){\n\
-        .reg .u32 len;\n\
-        .reg .b32 tmp;\n\
-        .reg .u32 pos;\n\
-        .reg .u32 index;\n\
-        .reg .v2 .b32 param<2>;\n\
-        .reg .pred run;\n\
-        .reg .pred typfloat;\n\
-        setp.eq.u32 typfloat, list.y, 2;\n\
-@typfloat bra float;\n\
-        ld.global.u32 len, [list];\n\
-        bra typend;\n\
-float:\n\
-        ld.global.f32 tmp, [list];\n\
-        cvt.rni.u32.f32 len, tmp;\n\
-typend:\n\
-        add.u32 list.x, list.x, 4;\n\
-        mov.u32 pos, 2;\n\
-        ld.global.b32 param0.x, [list];\n\
-        mov.u32 param0.y, list.y;\n\
-        add.u32 list.x, list.x, 4;\n\
-        ld.global.b32 param1.x, [list];\n\
-        mov.u32 param1.y, list.y;\n\
-        add.u32 list.x, list.x, 4;\n\
-        call (rval), %lambda, (param0, param1);\n\
-start:\n\
-        setp.lt.u32 run, pos, len;\n\
-  @!run bra end;\n\
-        ld.global.b32 param1.x, [list];\n\
-        call (rval), %lambda, (rval, param1);\n\
-        add.u32 pos, pos, 1;\n\
-        add.u32 list.x, list.x, 4;\n\
-  @run bra start;\n\
-end:\n\
-        ret;\n\
-}'
-        
-        stmts = stmts + ''.join([visit(self,i) for i in node.body])
-        return preamble + self.funcs + stmts
+.reg .v2 .b32 %seed;\n')
+
+        #Append builtin functions, if used
+        for i in builtin_functions:
+            if builtin_functions[i]:
+                self.str_lst.append(builtin_defs[i])
+
+        #Iterate module body
+        body = [visit(self,i) for i in node.body]
+
+        #Join list into a string
+        return ''.join(self.str_lst+body)
 
     def visit_FunctionDef(self, node):
         old_varlist = self.varlist
-        args = ''
-        stmts = ''
-        if instrs.entryFunc == node.name:
-            for i in range(len(node.args.args)):
-                if instrs.args[i][0] == 'ChannelEndRead' or instrs.args[i][0] == 'ChannelEndWrite':
-                    if i > 0:
-                        args = args + ','
-                    args = args + '\n\t.param .u64 __cudaparam__' + node.args.args[i].id
-                    if instrs.args[i][0] == 'ChannelEndRead':
-                        self.funcs = self.funcs + self.make_ChannelEndRead(node.args.args[i].id, instrs.args[i][1])
-                        stmts = stmts + '\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id)
-                    if instrs.args[i][0] == 'ChannelEndWrite':
-                        self.funcs = self.funcs + self.make_ChannelEndWrite(node.args.args[i].id, instrs.args[i][1])
-                        stmts = stmts + '\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id)
+        definition = []
+        args = []
+        declarations = []
+        body = []
 
-            stmts = stmts + ''.join([visit(self,i) for i in node.body])
- 
-            for i in self.varlist:
-                stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
-            self.var_list = old_varlist
-	    inits = '\n.reg .b32 %r<3>;\n\
+        #Entry function
+        if instrs.entryFunc == node.name:
+            #Function definition
+            definition = ['\n.entry %s(' % node.name]
+            
+            #Add channel arguments to definition
+            definition.append(', '.join(['\n\t.param .u64 __cudaparam__' + node.args.args[i].id for i in range(len(node.args.args)) if instrs.args[i][0] == 'ChannelEndRead' or instrs.args[i][0] == 'ChannelEndWrite']))
+            definition.append(')\n{')
+
+            for i in range(len(node.args.args)):
+                if instrs.args[i][0] == 'ChannelEndRead':
+                    self.str_lst.append(self.make_ChannelEndRead(node.args.args[i].id, instrs.args[i][1]))
+                    body.append('\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id))
+                if instrs.args[i][0] == 'ChannelEndWrite':
+                    self.str_lst.append(self.make_ChannelEndWrite(node.args.args[i].id, instrs.args[i][1]))
+                    body.append('\n\tld.param.u64 __cuda__%s_global, [__cudaparam__%s];' % (node.args.args[i].id, node.args.args[i].id))
+
+            #Thread id calculations
+            declarations.append('\n\t.reg .b32 %r<3>;\n\
 \t.reg .b16 %rh<3>;\n\
 \tmov.u16 %rh1, %ctaid.x;\n\
 \tmov.u16 %rh2, %ntid.x;\n\
 \tmul.wide.u16 %r1, %rh1, %rh2;\n\
 \tcvt.u32.u16 %r2, %tid.x;\n\
 \tadd.u32 %t_id, %r2, %r1;\n\
-\tmul.wide.u32 %tid_offset, %t_id, 4;\n'
+\tmul.wide.u32 %tid_offset, %t_id, 4;\n')
+            
+            #Random seeding, if used
             if builtin_functions['random']:
-                stmts = inits + '\
-\tadd.u32 %r0, %t_id, ' + str(randint(0,4294967295)) + ';\n\
+                body.append('\n\tadd.u32 %r0, %t_id, ')
+                body.append(str(randint(0,4294967295)))
+                body.append(';\n\
 \tmov.u32 %seed.x, %r0;\n\
 \tcall (%seed), random, ();\n\
-\tcall (%seed), random, ();\n' + stmts
+\tcall (%seed), random, ();\n')
 
-            stmts = '\n\t.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;' + stmts
-            stmts = '\n\t.reg .pred %pred<'+str(instrs.predcounter)+'>;'  + stmts
-            return '\n.entry %s (%s){%s\n}' % (node.name, args, stmts)
+            #Visit body nodes. These build up self.varlist
+            body = body + [visit(self,i) for i in node.body]
+ 
+            #Place created varlist in declarations
+            for i in self.varlist:
+                declarations.append('\n\t.reg .v2 .%s %s;' % (self.varlist[i], i))
+
+            #Revert to previous varlist
+            self.varlist = old_varlist
+
+            declarations.append('\n\t.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;')
+            declarations.append('\n\t.reg .pred %pred<'+str(instrs.predcounter)+'>;')
+            body.append('\n}')
+
+            return ''.join(definition + declarations + body)
+
+        #Non-entry function
         else:
+            #Function definition
+            definition = ['\n.func (.reg .v2 .b32 %%rval) %s' % node.name]
+
+            #Add arguments to definition
             func_args_list = [i.id for i in node.args.args]
             args = ', '.join(['\n\t.reg .v2 .b32 ' + i for i in func_args_list])
+            definition.append('(')
+            definition.append(args)
+            definition.append(')\n{')
 
-            body = ''.join([visit(self,i) for i in node.body])
+            #Traverse body
+            body = [visit(self,i) for i in node.body]
 
-            self.funcs = self.funcs + '\n.func (%s) %s (%s){' % ('.reg .v2 .b32 %rval', node.name, args)
+            #Place created varlist in declarations
             for i in self.varlist:
                 if i not in func_args_list:
-                    stmts = '\n\t.reg .v2 .%s %s;' % (self.varlist[i], i) + stmts
+                    declarations.append('\n\t.reg .v2 .%s %s;' % (self.varlist[i], i))
 
-            self.var_list = old_varlist
-            stmts = stmts + '\n.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;'
-            stmts = stmts + '\n.reg .pred %pred<'+str(instrs.predcounter)+'>;'
-            self.funcs = self.funcs +stmts+ body +'\n}'
+            #Revert to previous varlist
+            self.varlist = old_varlist
+            
+            #Add temporaries to declarations
+            declarations.append('\n\t.reg .v2 .b32 %tmp<'+str(instrs.tmpcounter)+'>;')
+            declarations.append('\n\t.reg .pred %pred<'+str(instrs.predcounter)+'>;')
+
+            #End body
+            body.append('\n}')
+
+            #Store to global str_lst, as function defs are not allowed inside function defs
+            self.str_lst.append(''.join(definition + declarations + body))
             return ''
 
     def visit_DeclareArray(self, node):
@@ -186,6 +187,8 @@ end:\n\
         elif isinstance(node.op, ast.Mult) and node.type == 'f32':
             op = 'mul'
         elif isinstance(node.op, ast.Div) and (node.type == 'u32' or node.type == 's32'):
+            #Divhelp variables are a fix since var1.x / var2.x is currently bugged.
+            #Instead we do divhelp1 = var1.x, divhelp2=var2.x, res = divhelp1/divhelp2
             op = 'div'
             s = '\n\tmov.b32 divhelp0, %s;'%dest+\
                 '\n\tmov.b32 divhelp1, %s;'%left+\
@@ -250,6 +253,7 @@ end:\n\
 
     def visit_Index(self, node):
         val = visit(self, node.value)
+        ##Value is multiplied by 4 to transform to 32 bit offset
         val = int(val)*4
         return val
 
@@ -258,21 +262,16 @@ end:\n\
             self.varlist[node.id] = 'b32'
         return '%s' % node.id
 
-    def visit_Register(self, node):
-        if node.id[0] != '%' and not self.varlist.has_key(node.id):
-            self.varlist[node.id] = 'b' + str(node.bits)
-        return '%s' % node.id
-
     def visit_Typ(self, node):
         s = visit(self, node.value)
-        if isinstance(node.value, ast.Name) or isinstance(node.value, Register):
+        if isinstance(node.value, ast.Name):
             return '%s.y' % s
         else:
             return '%s' % s
 
     def visit_Val(self, node):
         s = visit(self, node.value)
-        if isinstance(node.value, ast.Name) or isinstance(node.value, Register):
+        if isinstance(node.value, ast.Name):
             return '%s.x' % s
         else:
             return '%s' % s
@@ -297,12 +296,6 @@ end:\n\
 
     def visit_GtE(self, node):
         return 'ge'
-
-    def visit_ShiftLeftInstr(self, node):
-        return '\n\tshl.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))
-                                        
-    def visit_ShiftRightInstr(self, node):
-        return '\n\tshr.b32 %s, %s, %s;' % (visit(self, node.dest), visit(self, node.lhs), visit(self, node.rhs))
 
     def visit_SetInstr(self, node):
         return '\n\tset.%s.%s.%s %s, %s, %s;' % (visit(self, node.op), node.type, node.type, visit(self, node.lhs), visit(self, node.left), visit(self, node.right))

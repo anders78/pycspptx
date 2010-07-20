@@ -1,10 +1,34 @@
 import ast
 import instrs
 
+#######################################
+### Instrs                          ###
+### Helper functions and variables, ###
+### as well as node definitions     ###
+#######################################
+
+#Counter to keep track of the number of variables to generate
 tmpcounter = 0
 labelcounter = 0
 predcounter = 0
 
+#entryFunc is set when entry function is determined
+entryFunc = None
+
+#Define builtin-functions
+builtin_functions = {'range':False, 'reduce':False, 'random':False}
+
+#Set bits used in boxing
+shift = { 'int' : 2, 'bool' : 2, 'float': 2, 'big' : 2 }
+tag = { 'int' : 0, 'bool' : 1, 'float': 2, 'big' : 3 }
+mask = 3
+
+#List of variables in current scope
+varlist = {}
+
+#Helper function that generates a new variable
+#and returns its name. Type of variable is
+#determined by the varname argument
 def generate_var(varname):
     global tmpcounter
     global labelcounter
@@ -13,58 +37,31 @@ def generate_var(varname):
     if varname == 'tmp':
         name = '%'+ varname + str(tmpcounter)
         tmpcounter = tmpcounter + 1
-#        varlist[name] = 32
     elif varname == 'label':
         name = '%'+ varname + str(labelcounter)
         labelcounter = labelcounter + 1
-        #varlist[name] = 32
     elif varname == 'pred':
         name = '%'+ varname + str(predcounter)
         predcounter = predcounter + 1
-#        predlist.append(name)
     else:
         raise Exception('Variable %s not allowed' % varname)
     return name
 
+#Generate a let instruction as let n = expr in k(n)
 def letify(expr, k):
     if isinstance(expr, ast.Name) or isinstance(expr, ast.Num):
         return k(expr)
     else:
         n = generate_var("tmp")
-        return instrs.Let(n, expr, k(ast.Name(n, ast.Load())))
+        return Let(n, expr, k(ast.Name(n, ast.Load())))
 
+#Visit is used in all passes to access visitor functions
 def visit(env, *args):
     return getattr(env, 'visit_'+type(args[0]).__name__)(*args)
 
-def set_list(lhs, typ, size):
-    if isinstance(lhs, ast.Name):
-        lists[lhs.id] = (typ, size)
-    else:
-        raise Exception ('Unknown lhs in set_list')
-
-def get_list(lhs):
-    if isinstance(lhs, ast.Name):
-        return lists[lhs.id]
-    else:
-        raise Exception ('Unknown lhs in get_list')
-
-#var_types = dict()
-#lists = dict()
-#channel_args = dict()
-#return_vars = dict()
-entryFunc = None
-#args = []
-#randomused = False
-#ext_funcs = ''
-varlist = {}
-colornames = {}
-predlist = []
-reserved_registers = []
-builtin_functions = {'range':False, 'reduce':False, 'random':False}
-shift = { 'int' : 2, 'bool' : 2, 'float': 2, 'big' : 2 }
-tag = { 'int' : 0, 'bool' : 1, 'float': 2, 'big' : 3 }
-mask = 3
-
+#######################
+## Node definitions ###
+#######################
 class MoveInstr(ast.AST):
     def __init__(self, lhs, rhs, vect, typ):
         self.lhs = lhs
@@ -73,45 +70,7 @@ class MoveInstr(ast.AST):
         self.type = typ
         self._fields = ('lhs', 'rhs')
 
-class AddInstr(ast.AST):
-    def __init__(self, dest, lhs, rhs, typ):
-        self.dest = dest
-        self.lhs = lhs
-        self.rhs = rhs
-        self.type = typ
-        self._fields = ('lhs', 'rhs')
-
-class MultInstr(ast.AST):
-    def __init__(self, dest, lhs, rhs, typ):
-        self.dest = dest
-        self.lhs = lhs
-        self.rhs = rhs
-        self.type = typ
-        self._fields = ('lhs', 'rhs')
-
-class DivInstr(ast.AST):
-    def __init__(self, dest, lhs, rhs, typ):
-        self.dest = dest
-        self.lhs = lhs
-        self.rhs = rhs
-        self.type = typ
-        self._fields = ('lhs', 'rhs')
-
-class USubInstr(ast.AST):
-    def __init__(self, lhs, rhs, typ):
-        self.lhs = lhs
-        self.rhs = rhs
-        self.type = typ
-        self._fields = ('lhs', 'rhs')
-
 class LoadGlobalInstr(ast.AST):
-    def __init__(self, lhs, rhs, offset):
-        self.lhs = lhs
-        self.rhs = rhs
-        self.offset = offset
-        self._fields = ('lhs', 'rhs', 'offset')
-
-class StoreLocalInstr(ast.AST):
     def __init__(self, lhs, rhs, offset):
         self.lhs = lhs
         self.rhs = rhs
@@ -126,6 +85,7 @@ class AndInstr(ast.AST):
         self._fields = ('dest', 'lhs', 'rhs')
 
 class ReturnInstr(ast.AST):
+    #A PTX return instr has no arguments
     def __init__(self):
         pass
 
@@ -176,13 +136,7 @@ class BinOp(ast.AST):
         self.type = typ
         self._fields = ('lhs', 'op', 'rhs')
 
-#class UnaryOpExpr(ast.AST):
-#    def __init__(self, dest, op, operand):
-#       self.dest = dest
-#        self.op = op
-#        self.operand = operand
-#        self._fields('operand')
-
+#BinOpExpr contains destination register,
 class BinOpExpr(ast.AST):
     def __init__(self, dest, left, op, right, typ):
         self.dest = dest
@@ -206,26 +160,6 @@ class Val(ast.AST):
     def __init__(self, value):
         self.value = value
         self._fields = ('value')
-
-class ShiftLeftInstr(ast.AST):
-    def __init__(self, dest, lhs, rhs):
-        self.dest = dest
-        self.lhs = lhs
-        self.rhs = rhs
-        self._fields = ('dest', 'lhs', 'rhs')
-
-class ShiftRightInstr(ast.AST):
-    def __init__(self, dest, lhs, rhs):
-        self.dest = dest
-        self.lhs = lhs
-        self.rhs = rhs
-        self._fields = ('dest', 'lhs', 'rhs')
-
-class Register(ast.AST):
-    def __init__(self, name, bits):
-        self.id = name
-        self.bits = bits
-        self._fields = ('id')
 
 class SetSubscript(ast.AST):
     def __init__(self, container, val, key):

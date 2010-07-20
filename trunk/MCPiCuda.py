@@ -35,7 +35,7 @@ def worker(job_in, result_out):
        cnt=job_in()           #Get task
        sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), [float(i) for i in range(80000)])
        result_out((4.0*sum)/cnt)  #Forward result
-#       result_out(sum)
+
 
 
 @process
