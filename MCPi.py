@@ -35,7 +35,6 @@ def worker(job_in, result_out):
        sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), range(cnt))
        result_out((4.0*sum)/cnt)  #Forward result
 
-
 @process
 def consumer(result_in):
    cnt=0; sum=result_in()    #Get first result
@@ -52,8 +51,9 @@ results=Channel()
 
 start = time()
 Parallel(
-   producer( jobs.writer() , 240000, 1024), #10000, 1000
-   2 * worker( jobs.reader() ,results.writer()),
+   producer( jobs.writer() , 10000, 1024), #10000, 1000
+   3 * worker( jobs.reader() ,results.writer()),
    consumer(results.reader()))
 end = time()
 print "Time taken (s):", end-start
+
