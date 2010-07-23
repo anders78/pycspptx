@@ -9,7 +9,7 @@ from flattenvisitor import *
 from instselectvisitor import *
 from genptxvisitor import *
 import instrs
-
+import time
 from pycsp.processes.channel import ChannelRetireException, ChannelPoisonException
 
 #Handles arguments, applies compiler passes to function, and executes resulting
@@ -22,6 +22,7 @@ def execute(func, args):
     (threads, blocks) = calcThreadsnBlocks(count)
 
     #Parse source code of function to create AST
+    start = time.time()
     st = ast.parse(inspect.getsource(func))
 
     #Explicate AST
@@ -48,6 +49,8 @@ def execute(func, args):
 
     #Execute kernel
     hKernel(*cuda_args, block=(threads, 1, 1), grid=(blocks,1))
+    end = time.time()
+    print "Compile and execution time=", end-start
 
     #Pass outputs on to outputchannels. 
     #Check types, change output to

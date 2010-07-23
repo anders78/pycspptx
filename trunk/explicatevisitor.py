@@ -30,6 +30,9 @@ class ExplicateVisitor(ast.NodeVisitor):
             container = visit(self, lhs.value)
             key = visit(self, lhs.slice)
             return SetSubscript(container, key, rhs)
+        elif isinstance(lhs, ast.Tuple):
+            visit(self, lhs)            
+            return ast.Assign([lhs], rhs)
         else:
             raise Exception('Unrecognized lhs in Assign')
 
@@ -139,6 +142,10 @@ class ExplicateVisitor(ast.NodeVisitor):
     def visit_Subscript(self, node):
         value = visit(self, node.value)
         return ast.Subscript(value, node.slice, node.ctx)
+
+    def visit_Tuple(self, node):
+        elts = [visit(self, i) for i in node.elts]
+        return ast.Tuple(elts, node.ctx)
 
     def visit_UnaryOp(self, node):
         if isinstance(node.operand, ast.Num) and isinstance(node.operand.n, int):
