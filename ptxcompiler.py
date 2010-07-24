@@ -125,6 +125,8 @@ def calcThreadsnBlocks(count):
     #Divide into blocks of 512 threads each
     if count == 0:
         return (1,1)
+    elif count % 1024 == 0:
+        t = 1024
     elif count % 512 == 0:
         t = 512
     elif count % 256 == 0:
