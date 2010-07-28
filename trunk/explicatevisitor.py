@@ -28,8 +28,8 @@ class ExplicateVisitor(ast.NodeVisitor):
         #Assign to list
         elif isinstance(lhs, ast.Subscript):
             container = visit(self, lhs.value)
-            key = visit(self, lhs.slice)
-            return SetSubscript(container, key, rhs)
+            #key = visit(self, lhs.slice)
+            return SetSubscript(container, rhs, lhs.slice)
         elif isinstance(lhs, ast.Tuple):
             visit(self, lhs)            
             return ast.Assign([lhs], rhs)
@@ -62,6 +62,10 @@ class ExplicateVisitor(ast.NodeVisitor):
                              SetType('int', BinOp(Val(l), op, Val( r), 's32')), #Then
                              SetType('float', BinOp(Val(l), op, Val(r), 'f32'))) #Else
         return letify(left, lambda l: letify(right, lambda r: result(l, r)))
+
+    def visit_BoolOp(self, node):
+        values = [visit(self, i) for i in node.values]
+        return ast.BoolOp(node.op, values)
 
     def visit_Call(self, node):
         #Builtin function
@@ -160,7 +164,11 @@ class ExplicateVisitor(ast.NodeVisitor):
 
     def visit_While(self, node):
         #Placeholder. While not yet fully supported
-        stmts = []
-        for i in node.body:
-            stmts = stmts + [visit(self, i)]
-        return ast.While(node.test, stmts, node.orelse)
+        stmts = [visit(self, i) for i in node.body]
+        if isinstance(node.test, ast.Name) and node.test.id == 'True':
+            return ast.While(node.test, stmts, node.orelse)
+        else:
+            test = visit(self, node.test)
+            return ast.While(test, stmts, node.orelse)
+
+

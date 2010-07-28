@@ -19,12 +19,17 @@ entryFunc = None
 builtin_functions = {'range':False, 'reduce':False, 'random':False}
 
 #Set bits used in boxing
-shift = { 'int' : 2, 'bool' : 2, 'float': 2, 'big' : 2 }
+#shift = { 'int' : 2, 'bool' : 2, 'float': 2, 'big' : 2 }
 tag = { 'int' : 0, 'bool' : 1, 'float': 2, 'big' : 3 }
 mask = 3
 
 #List of variables in current scope
 varlist = {}
+
+#Output count
+channel_vars = {}
+
+args = []
 
 #Helper function that generates a new variable
 #and returns its name. Type of variable is
@@ -162,11 +167,19 @@ class Val(ast.AST):
         self._fields = ('value')
 
 class SetSubscript(ast.AST):
-    def __init__(self, container, val, key):
+    def __init__(self, container, value, key):
         self.container = container
-        self.val = val
+        self.value = value
         self.key = key
-        self._fields = ('container', 'key', 'val')
+        self._fields = ('container', 'key', 'value')
+
+class SetSubscriptExpr(ast.AST):
+    def __init__(self, lhs, container, value, key):
+        self.lhs = lhs
+        self.container = container
+        self.value = value
+        self.key = key
+        self._fields = ('container', 'key', 'value')
 
 class SetType(ast.AST):
     def __init__(self, typ, arg):

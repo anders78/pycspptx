@@ -70,12 +70,20 @@ class FlattenVisitor(ast.NodeVisitor):
         (rhs,stmts) = visit(self, node.value, True)
         return stmts + [ast.Return(rhs)]
 
+    def visit_SetSubscript(self, node):
+        tmp = generate_var('tmp')
+        (value, stmts1) = visit(self, node.value, True)
+        return stmts1 + [SetSubscriptExpr(ast.Name(tmp, ast.Store()), node.container, value, node.key)]
+
     def visit_While(self, node):
         if isinstance(node.test, ast.Name) and node.test.id == 'True':
+            #Special case of while True
             stmts = reduce(list.__add__,[visit(self, i) for i in node.body])
             return stmts
         else:
-            raise Exception('Currently only while(True) loops supported')
+            (test, stmts1) = visit(self, node.test, True)
+            body_stmts = reduce(list.__add__, [visit(self, i) for i in node.body])
+            return stmts1 + [ast.While(test, body_stmts+stmts1, node.orelse)]
 
     ###################
     ### Expressions ###
@@ -94,6 +102,7 @@ class FlattenVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node, simple):
         if isinstance(node.func, ast.Name):
+            channel_vars[node.func.id] = len(node.args)
             args = stmts = []
             for i in node.args:
                 (arg, stmt) = visit(self, i, True)
@@ -136,6 +145,31 @@ class FlattenVisitor(ast.NodeVisitor):
                 test_stmt + 
                 [ast.If(test, body_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], body)], 
                         orelse_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], orelse)])])
+
+    def visit_BoolOp(self, node, simple):
+        (left, stmt1) = visit(self, node.values[0], True)
+        (right, stmt2) = visit(self, node.values[1], True)
+        #Transform to IfExp
+
+        if isinstance(node.op, ast.And):
+            op = ast.Gt()
+        elif isinstance(node.op, ast.Or):
+            op = ast.Eq()
+        else:
+            raise Exception('Unknown BoolOp operator')
+        #op = and:
+        n = ast.IfExp(Compare(node.values[0], op, ast.Num(0), 'u32'),
+                      node.values[1], node.values[0])
+        return self.visit_IfExp(n, simple)
+
+#        if simple:
+#            tmp = generate_var('tmp')
+#            return (ast.Name(tmp, ast.Load()),
+#                    stmt1 + stmt2 +
+#                    [ast.Assign([ast.Name(tmp, ast.Store())],
+#                    ast.BoolOp(node.op, [left, right]))])
+#        else: 
+#            return (ast.BoolOp(node.op, [left, right]), stmt1 + stmt2)
 
     def visit_Lambda(self, node, simple):
         (arg, stmts) = visit(self, node.body, True)
