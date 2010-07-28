@@ -83,7 +83,6 @@ class CudaProcess(mp.Process):
         try:
             #Pass function and arguments to the PTX compiler
             ptxcompiler.execute(self.fn, self.args)
-
         except ChannelPoisonException, e:
             # look for channels and channel ends
             self.__check_poison(self.args)

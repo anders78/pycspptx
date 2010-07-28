@@ -13,9 +13,6 @@ class InstSelectVisitor(ast.NodeVisitor):
         stmts = reduce(list.__add__, [visit(self, i) for i in node.body])
         return ast.Module(stmts)
 
-    ##################
-    ### Statements ###
-    ##################
     def visit_Assign(self, node):
         lhs = node.targets[0].id
         return visit(self, node.value, lhs)
@@ -108,6 +105,18 @@ class InstSelectVisitor(ast.NodeVisitor):
                [PredicateBranchInstr(ast.Name(pred, ast.Store()), ast.Name(end_label, ast.Load()), True), Label(orelse_label)]+\
                 orelses + [Label(end_label)]
 
+    def visit_While(self, node):
+        body = reduce(list.__add__, [visit(self, i) for i in node.body])
+        start_label = generate_var("label")
+        end_label = generate_var("label")
+        pred = generate_var("pred")
+
+        return [Label(start_label), \
+                SetpInstr(ast.Name(pred, ast.Store()), Val(node.test), ast.Gt(), ast.Num(0)),\
+                PredicateBranchInstr(ast.Name(pred, ast.Store()), ast.Name(end_label, ast.Load()), False)] + body +\
+               [PredicateBranchInstr(ast.Name(pred, ast.Store()), ast.Name(start_label, ast.Load()), True), \
+                Label(end_label)]
+
     def visit_Lambda(self, node, lhs):
         stmts = reduce(list.__add__, [visit(self, i) for i in node.body])
         return [ast.FunctionDef(lhs, node.args, stmts, [])]
@@ -136,8 +145,14 @@ class InstSelectVisitor(ast.NodeVisitor):
                 MoveInstr(Typ(ast.Name('%rval', ast.Load())), Typ(node.value), '', 's32'),
                 ReturnInstr()]
 
-    def visit_SetSubscript(self, node):
-        return [StoreLocalInstr(node.container, node.val, node.key)]
+    def visit_SetSubscriptExpr(self, node):
+        #Assumes list is stored in global memory
+        if isinstance(node.key, ast.Index):
+            node.key.value.n = node.key.value.n + 1         
+        else:
+            raise Exception('No slicing allowed in array index')
+        return [BinOpExpr(Val(node.lhs), Val(node.key), ast.Add(), Val(node.container), 'u32'),
+                node]
 
     def visit_SetType(self, node, lhs):
         if node.typ == 'big':
