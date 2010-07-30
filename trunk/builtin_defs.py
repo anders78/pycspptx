@@ -2,7 +2,7 @@
 ### Builtin_defs                                   ###
 ### Contains definitions for the builtin functions ###
 ######################################################
-
+from instrs import * 
 builtin_defs = {}
 
 builtin_defs['random'] = '\
@@ -31,13 +31,13 @@ builtin_defs['reduce'] = '\
         .reg .v2 .b32 param<2>;\n\
         .reg .pred run;\n\
         .reg .pred typfloat;\n\
-        setp.eq.u32 typfloat, list.y, 3;\n\
-@typfloat bra float;\n\
+//        setp.eq.u32 typfloat, list.y, 3;\n\
+//@typfloat bra float;\n\
         ld.global.u32 len, [list];\n\
-        bra typend;\n\
-float:\n\
-        ld.global.f32 tmp, [list];\n\
-        cvt.rni.u32.f32 len, tmp;\n\
+//        bra typend;\n\
+//float:\n\
+//        ld.global.f32 tmp, [list];\n\
+//        cvt.rni.u32.f32 len, tmp;\n\
 typend:\n\
         add.u32 list.x, list.x, 4;\n\
         mov.u32 pos, 2;\n\
@@ -61,6 +61,38 @@ start:\n\
 end:\n\
         ret;\n\
 }'
+
+builtin_defs['float'] = '\
+.func (.reg .v2 .b32 rval) float (.reg .v2 .b32 val){\n\
+        .reg .f32 tmp;\n\
+        .reg .pred isfloat;\n\
+        setp.eq.u32 isfloat, val.y, %s;\n\
+ @isfloat bra nochange;\n\
+	cvt.rn.f32.s32 tmp, val.x;\n\
+        mov.f32 rval.x, tmp;\n\
+        mov.u32 rval.y, %s;\n\
+ @!isfloat bra end;\n\
+nochange:\n\
+        mov.b32.v2 rval, val;\n\
+end:\n\
+        ret;\n\
+}' % (instrs.tag['float'], instrs.tag['float'])
+
+builtin_defs['int'] = '\
+.func (.reg .v2 .b32 rval) int (.reg .v2 .b32 val){\n\
+        .reg .s32 tmp;\n\
+        .reg .pred isint;\n\
+        setp.eq.u32 isint, val.y, %s;\n\
+ @isint bra nochange;\n\
+	cvt.rni.s32.f32 tmp, val.x;\n\
+        mov.s32 rval.x, tmp;\n\
+        mov.u32 rval.y, %s;\n\
+ @!isint bra end;\n\
+nochange:\n\
+        mov.b32.v2 rval, val;\n\
+end:\n\
+        ret;\n\
+}' % (instrs.tag['int'],instrs.tag['int'])
 
 #Range is done in Python, therefore the empty PTX string
 builtin_defs['range'] = ''

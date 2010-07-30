@@ -16,7 +16,7 @@ predcounter = 0
 entryFunc = None
 
 #Define builtin-functions
-builtin_functions = {'range':False, 'reduce':False, 'random':False}
+builtin_functions = {'range':False, 'reduce':False, 'random':False, 'float':False, 'int':False}
 
 #Set bits used in boxing
 tag = { 'int' : 0, 'float': 1, 'intlist' : 2, 'floatlist' : 3}

@@ -33,7 +33,7 @@ def producer(job_out, bagsize, bags):
 def worker(job_in, result_out):
    while True:
        cnt=job_in()           #Get task
-       sum = reduce(lambda x,y: x+(random()**2+random()**2<1.0), [float(i) for i in range(80000)])
+       sum = reduce(lambda x,y: float(x)+(random()**2+random()**2<1.0), range(80000))
        result_out((4.0*sum)/cnt)  #Forward result
 
 @process
