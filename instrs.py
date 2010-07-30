@@ -205,11 +205,17 @@ class Let(ast.AST):
     def __repr__(self):
         return "Let(%s, %s, %s)" % (self.var, repr(self.rhs), repr(self.body))
 
-class DeclareArray(ast.AST):
+class InitializeArray(ast.AST):
     def __init__(self, name, elems):
         self.name = name
         self.elems = elems
         self._fields = ('name', 'size')
+
+class DeclareArray(ast.AST):
+    def __init__(self, size, lhs):
+        self.size = size
+        self.lhs = lhs
+        self._fields = ('size')
 
 class LoadParam(ast.AST):
     def __init__(self, reg, param):

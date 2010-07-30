@@ -56,6 +56,12 @@ class ExplicateVisitor(ast.NodeVisitor):
     def visit_BinOp(self, node):
         left = visit(self, node.left)
         right = visit(self, node.right)
+
+        #Special case Num * List. Create Array
+        if isinstance(node.right, ast.List) and isinstance(node.left, ast.Num):
+           if not (isinstance(node.right.elts[0], ast.Name) and node.right.elts[0].id is None):
+               return DeclareArray(node.left, None)
+
         op = node.op
         def result(l, r):
             return ast.IfExp(Compare(Typ(l), ast.Eq(),  ast.Num(tag['int']), 'u32'), #If
@@ -148,7 +154,8 @@ class ExplicateVisitor(ast.NodeVisitor):
 
     def visit_Subscript(self, node):
         value = visit(self, node.value)
-        return ast.Subscript(value, node.slice, node.ctx)
+        slice = visit(self, node.slice)
+        return ast.Subscript(value, slice, node.ctx)
 
     def visit_Tuple(self, node):
         elts = [visit(self, i) for i in node.elts]

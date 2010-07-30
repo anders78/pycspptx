@@ -68,7 +68,10 @@ class InstSelectVisitor(ast.NodeVisitor):
         else:
             raise Exception('Unkown type %s' % node.type)
 
-    def visit_DeclareArray(self, node):
+    def visit_DeclareArray(self, node, lhs):
+        return [DeclareArray(node.size, ast.Name(lhs, ast.Load()))]
+
+    def visit_InitializeArray(self, node):
         return [node]
 
     def visit_Expr(self, node):
@@ -148,11 +151,17 @@ class InstSelectVisitor(ast.NodeVisitor):
     def visit_SetSubscriptExpr(self, node):
         #Assumes list is stored in global memory
         if isinstance(node.key, ast.Index):
-            node.key.value.n = node.key.value.n + 1         
+            if isinstance(node.key.value, ast.Num):
+                node.key.value.n = (node.key.value.n + 1)*4
+                return [BinOpExpr(Val(node.lhs), Val(node.key), ast.Add(), Val(node.container), 'u32'),node]
+            elif isinstance(node.key.value, ast.Name):
+                return [BinOpExpr(Val(node.key.value),Val(node.key.value), ast.Add(), ast.Num(1), 'u32'),
+                        BinOpExpr(Val(node.key.value),Val(node.key.value), ast.Mult(), ast.Num(4), 'u32'),
+                        BinOpExpr(Val(node.lhs), Val(node.key.value), ast.Add(), Val(node.container), 'u32'),node]
+            else: raise Exception('Unknown subscript type')
         else:
             raise Exception('No slicing allowed in array index')
-        return [BinOpExpr(Val(node.lhs), Val(node.key), ast.Add(), Val(node.container), 'u32'),
-                node]
+
 
     def visit_SetType(self, node, lhs):
         if node.typ == 'big':
@@ -166,9 +175,16 @@ class InstSelectVisitor(ast.NodeVisitor):
 
     def visit_Subscript(self, node, lhs):
         if isinstance(node.slice, ast.Index):
-            node.slice.value.n = node.slice.value.n + 1
+            if isinstance(node.slice.value, ast.Num):
+                node.slice.value.n = (node.slice.value.n + 1)*4
+                return [LoadGlobalInstr(ast.Name(lhs, ast.Store()), node.value, node.slice)]
+            elif isinstance(node.slice.value, ast.Name):
+                return [BinOpExpr(Val(node.slice.value),Val(node.slice.value), ast.Add(), ast.Num(1), 'u32'),
+                        BinOpExpr(Val(node.slice.value),Val(node.slice.value), ast.Mult(), ast.Num(4), 'u32'),
+                        LoadGlobalInstr(ast.Name(lhs, ast.Store()), node.value, Val(node.slice.value))]
+            else: raise Exception('Unknown subscript type')
         else:
             raise Exception('No slicing allowed in array index')
-        return [LoadGlobalInstr(ast.Name(lhs, ast.Store()), node.value, node.slice)]
+    
 
 

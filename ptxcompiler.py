@@ -32,13 +32,6 @@ s = '.version 2.0\n\
         	st.global.v2.b32 [__cuda__cout_global], val;\n\
 }\n\
 \n\
-.func (.reg .v2 .b32 rval) float (.reg .v2 .b32 val){\n\
-        .reg .f32 tmp;\n\
-	cvt.rn.f32.u32 tmp, val.x;\n\
-        mov.f32 rval.x, tmp;\n\
-        mov.u32 rval.y, 1;\n\
-}\n\
-\n\
 .entry worker(\n\
 	.param .u64 __cudaparam__cin, \n\
 	.param .u64 __cudaparam__cout)\n\
@@ -53,15 +46,16 @@ s = '.version 2.0\n\
 	mul.wide.u32 %tid_offset, %t_id, 8;\n\
 \n\
 	.reg .v2 .b32 l;\n\
-	.reg .v2 .b32 %tmp<2>;\n\
+	.reg .v2 .b32 %tmp<1>;\n\
 	.reg .pred %pred<0>;\n\
 	ld.param.u64 __cuda__cin_global, [__cudaparam__cin];\n\
 	ld.param.u64 __cuda__cout_global, [__cudaparam__cout];\n\
-	mov.u32 %tmp0.y, 0;\n\
-	mov.s32 %tmp0.x, 1;\n\
+	.global .s32 %tmp0_local[4] = {3, 2, 1, 0};\n\
+	.global .s32 %tmp10_local[4] = {3, 6, 7, 8};\n\
+	mov.b32 %tmp0.x, %tmp0_local;\n\
+	mov.u32 %tmp0.y, 2;\n\
 	mov.b32.v2 l, %tmp0;\n\
-	call (%tmp1), float, (l);\n\
-	call cout, (%tmp1);\n\
+	call cout, (l);\n\
 }'
 
 #Handles arguments, applies compiler passes to function, and executes resulting
@@ -124,7 +118,6 @@ def execute(func, args):
         raise ChannelPoisonException
 
 def handle_write(typ, args, array):
-	print "Typ", typ
 	if instrs.tag['float'] == typ:
 	    array.dtype = (numpy.float32,numpy.int32)
 	    for (j,k) in array:
@@ -134,9 +127,7 @@ def handle_write(typ, args, array):
 		args(j)
 	elif instrs.tag['intlist'] == typ:
 	    for (j,k) in array:
-		arr = cuda.from_device(int(j),1,numpy.int32)
-		arr = cuda.from_device(int(j+4),arr,numpy.int32)
-		arr = cuda.from_device(int(j),1,numpy.int32)
+		arr = cuda.from_device(int(j),1, numpy.int32)
 		arr = cuda.from_device(int(j+4),arr,numpy.int32)
 		args(arr)
 	elif instrs.tag['floatlist'] == typ:
@@ -154,7 +145,7 @@ def handle_write(typ, args, array):
                 res = []
                 for j in arr:
                     arr = cuda.from_device(int(j),1,numpy.int32)
-		    res.extend(cuda.from_device(int(j+4),arr,numpy.int32))
+		    res.append(cuda.from_device(int(j+4),arr,numpy.int32).tolist())
 		args(res)
 	elif typ == 5:
 	    for (j,k) in array:

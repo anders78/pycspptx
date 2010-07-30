@@ -22,7 +22,7 @@ class FlattenVisitor(ast.NodeVisitor):
     ### Statements ###
     ##################
     def visit_Assign(self, node):
-        (rhs,stmts) = visit(self, node.value, False)
+        (rhs,stmts) = visit(self, node.value, True)
         return stmts + [ast.Assign(node.targets, rhs)]
 
     def visit_DeclareGlobal(self, node):
@@ -73,7 +73,8 @@ class FlattenVisitor(ast.NodeVisitor):
     def visit_SetSubscript(self, node):
         tmp = generate_var('tmp')
         (value, stmts1) = visit(self, node.value, True)
-        return stmts1 + [SetSubscriptExpr(ast.Name(tmp, ast.Store()), node.container, value, node.key)]
+        (key, stmts2) = visit(self, node.key, True)
+        return stmts1 + stmts2 + [SetSubscriptExpr(ast.Name(tmp, ast.Store()), node.container, value, key)]
 
     def visit_While(self, node):
         if isinstance(node.test, ast.Name) and node.test.id == 'True':
@@ -99,6 +100,22 @@ class FlattenVisitor(ast.NodeVisitor):
                                 BinOp(left, node.op, right, node.type))])
         else:
             return (BinOp(left, node.op, right, node.type), stmt1 + stmt2)
+
+    def visit_BoolOp(self, node, simple):
+        (left, stmt1) = visit(self, node.values[0], True)
+        (right, stmt2) = visit(self, node.values[1], True)
+        #Transform to IfExp
+
+        if isinstance(node.op, ast.And):
+            op = ast.Gt()
+        elif isinstance(node.op, ast.Or):
+            op = ast.Eq()
+        else:
+            raise Exception('Unknown BoolOp operator')
+        #op = and:
+        n = ast.IfExp(Compare(node.values[0], op, ast.Num(0), 'u32'),
+                      node.values[1], node.values[0])
+        return self.visit_IfExp(n, simple)
 
     def visit_Call(self, node, simple):
         if isinstance(node.func, ast.Name):
@@ -130,6 +147,11 @@ class FlattenVisitor(ast.NodeVisitor):
         else:
             return (compare, stmt1 + stmt2)
 
+    def visit_DeclareArray(self, node, simple):
+        tmp = generate_var('tmp')
+        return (ast.Name(tmp, ast.Load()),
+                [ast.Assign([ast.Name(tmp, ast.Store())], node)])
+
     def visit_GetType(self, node, simple):
         (arg, stmt) = visit(self, node.arg, True)
         tmp = generate_var('tmp')
@@ -146,30 +168,13 @@ class FlattenVisitor(ast.NodeVisitor):
                 [ast.If(test, body_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], body)], 
                         orelse_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], orelse)])])
 
-    def visit_BoolOp(self, node, simple):
-        (left, stmt1) = visit(self, node.values[0], True)
-        (right, stmt2) = visit(self, node.values[1], True)
-        #Transform to IfExp
-
-        if isinstance(node.op, ast.And):
-            op = ast.Gt()
-        elif isinstance(node.op, ast.Or):
-            op = ast.Eq()
-        else:
-            raise Exception('Unknown BoolOp operator')
-        #op = and:
-        n = ast.IfExp(Compare(node.values[0], op, ast.Num(0), 'u32'),
-                      node.values[1], node.values[0])
-        return self.visit_IfExp(n, simple)
-
+    def visit_Index(self, node, simple):
+        (value, stmts) = visit(self, node.value, True)
 #        if simple:
-#            tmp = generate_var('tmp')
-#            return (ast.Name(tmp, ast.Load()),
-#                    stmt1 + stmt2 +
-#                    [ast.Assign([ast.Name(tmp, ast.Store())],
-#                    ast.BoolOp(node.op, [left, right]))])
-#        else: 
-#            return (ast.BoolOp(node.op, [left, right]), stmt1 + stmt2)
+        tmp = generate_var('tmp')
+#            return (ast.Name(tmp, ast.Load()), stmts + [ast.Assign([ast.Name(tmp, ast.Store())], ast.Index(value))])
+#        else:
+        return (ast.Index(ast.Name(tmp, ast.Load())), stmts + [ast.Assign([ast.Name(tmp, ast.Store())], value)])
 
     def visit_Lambda(self, node, simple):
         (arg, stmts) = visit(self, node.body, True)
@@ -189,7 +194,7 @@ class FlattenVisitor(ast.NodeVisitor):
     def visit_List(self, node, simple):
         tmp = generate_var('tmp') 
         return (ast.Name(tmp, ast.Load()),
-                [DeclareArray(ast.Name(tmp, ast.Store()), node.elts)])
+                [InitializeArray(ast.Name(tmp, ast.Store()), node.elts)])
 
     def visit_Name(self, node, simple):
         return node, []
@@ -205,12 +210,13 @@ class FlattenVisitor(ast.NodeVisitor):
 
     def visit_Subscript(self, node, simple):
         (value_res, value_stmt) = visit(self, node.value, True)
-        rhs = ast.Subscript(value_res, node.slice, node.ctx)
-        if simple:
-            tmp = generate_var('tmp')
-            return (ast.Name(tmp, ast.Load()), value_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], rhs)])
-        else:
-            return (rhs, value_stmt)
+        (slice_res, slice_stmt) = visit(self, node.slice, True)
+        rhs = ast.Subscript(value_res, slice_res, node.ctx)
+  #      if simple:
+        tmp = generate_var('tmp')
+        return (ast.Name(tmp, ast.Load()), value_stmt + slice_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], rhs)])
+#        else:
+ #           return (rhs, value_stmt+slice_stmt)
 
     def visit_Typ(self, node, simple):
         (expr, stmts) = visit(self, node.value, True)
