@@ -19,9 +19,7 @@ entryFunc = None
 builtin_functions = {'range':False, 'reduce':False, 'random':False}
 
 #Set bits used in boxing
-#shift = { 'int' : 2, 'bool' : 2, 'float': 2, 'big' : 2 }
-tag = { 'int' : 0, 'bool' : 1, 'float': 2, 'big' : 3 }
-mask = 3
+tag = { 'int' : 0, 'float': 1, 'intlist' : 2, 'floatlist' : 3}
 
 #List of variables in current scope
 varlist = {}
@@ -31,6 +29,7 @@ channel_vars = {}
 
 args = []
 
+threads = 0
 #Helper function that generates a new variable
 #and returns its name. Type of variable is
 #determined by the varname argument

@@ -31,7 +31,7 @@ builtin_defs['reduce'] = '\
         .reg .v2 .b32 param<2>;\n\
         .reg .pred run;\n\
         .reg .pred typfloat;\n\
-        setp.eq.u32 typfloat, list.y, 2;\n\
+        setp.eq.u32 typfloat, list.y, 3;\n\
 @typfloat bra float;\n\
         ld.global.u32 len, [list];\n\
         bra typend;\n\
@@ -43,9 +43,11 @@ typend:\n\
         mov.u32 pos, 2;\n\
         ld.global.b32 param0.x, [list];\n\
         mov.u32 param0.y, list.y;\n\
+        sub.u32 param0.y, param0.y, 2;\n\
         add.u32 list.x, list.x, 4;\n\
         ld.global.b32 param1.x, [list];\n\
         mov.u32 param1.y, list.y;\n\
+        sub.u32 param1.y, param1.y, 2;\n\
         add.u32 list.x, list.x, 4;\n\
         call (rval), %lambda, (param0, param1);\n\
 start:\n\
