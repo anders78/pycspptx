@@ -33,29 +33,13 @@ class GenPTXVisitor(ast.NodeVisitor):
         \tst.global.v2.b32 [__cuda__%s_global], val;\n}\n' % (name, name, name, name, name)
         return func
 
-#    def make_ChannelEndRead(self, name, typ):
-#        func = '\n.reg .b64 __cuda__%s_global;\n\
-#        .func (.reg .v2 .b32 rval) %s (){\n\
-#        \tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n\
-#        \tld.global.b32 rval.x, [__cuda__%s_global];\n\
-#        \tmov.s32 rval.y, %s;\n}\n' % (name, name, name, name, name, instrs.tag[typ])
-#        return func
-
-#    def make_ChannelEndWrite(self, name, typ):
-#        func = '\n.reg .b64 __cuda__%s_global;\n\
-#        .func () %s (.reg .v2 .b32 val){\n\
-#        \tst.global.b32 [__cuda__%s_global], val.y;\n\
-#        \tadd.u64 __cuda__%s_global, __cuda__%s_global, %%tid_offset;\n\
-#        \tst.global.b32 [__cuda__%s_global+4], val.x;\n}\n' % (name, name, name, name, name, name)
-#        return func
-
     def visit_Module(self, node):
         #Append module preamble, as well as global variables
         self.str_lst.append('\
 \n.version 2.0\n.target sm_20\n\
 .reg .b32 divhelp<3>;\n\
 .reg .b64 %tid_offset;\n\
-.reg .b64 %tid_offseth;\n\
+.reg .u32 %tid_offseth;\n\
 .reg .b32 %t_id;\n\
 .reg .v2 .b32 %seed;\n')
 
@@ -66,9 +50,9 @@ class GenPTXVisitor(ast.NodeVisitor):
 
         #Iterate module body
         body = [visit(self,i) for i in node.body]
-
+        self.str_lst.extend(body)
         #Join list into a string
-        return ''.join(self.str_lst+body)
+        return ''.join(self.str_lst)
 
     def visit_FunctionDef(self, node):
         old_varlist = self.varlist
@@ -102,7 +86,6 @@ class GenPTXVisitor(ast.NodeVisitor):
 \tmul.wide.u16 %r1, %rh1, %rh2;\n\
 \tcvt.u32.u16 %r2, %tid.x;\n\
 \tadd.u32 %t_id, %r2, %r1;\n\
-\tmul.wide.u32 %tid_offseth, %t_id, 4;\n\
 \tmul.wide.u32 %tid_offset, %t_id, 8;\n')
             
             #Random seeding, if used
@@ -128,7 +111,10 @@ class GenPTXVisitor(ast.NodeVisitor):
             declarations.append('\n\t.reg .pred %pred<'+str(instrs.predcounter)+'>;')
             body.append('\n}')
 
-            return ''.join(definition + declarations + body)
+            res = definition
+            res.extend(declarations)
+            res.extend(body)
+            return ''.join(res)
 
         #Non-entry function
         else:
@@ -161,7 +147,10 @@ class GenPTXVisitor(ast.NodeVisitor):
             body.append('\n}')
 
             #Store to global str_lst, as function defs are not allowed inside function defs
-            self.str_lst.append(''.join(definition + declarations + body))
+            res = definition
+            res.extend(declarations)
+            res.extend(body)
+            self.str_lst.append(''.join(res))
             return ''
 
     def visit_DeclareArray(self, node):
@@ -169,22 +158,34 @@ class GenPTXVisitor(ast.NodeVisitor):
         if isinstance(node.elems[1], ast.Num):
             if isinstance(node.elems[1].n, float):
                 typ = '.f32'
-                l = float(node.elems[0].n)
+                l =node.elems[0].n = float(node.elems[0].n)
             elif isinstance(node.elems[1].n, int):
                 typ = '.s32'
-                l = int(node.elems[0].n)
+                l=node.elems[0].n = int(node.elems[0].n)
             else:
                 raise Exception ('Unsupported element type in list %s' % node.name.id)
+            elems = ''.join(['\n\tst.global.%s [%s+%s], %s;' % ('b32', name+'_local',i*4, visit(self, node.elems[i])) for i in range(len(node.elems))])
+            string = '\n\t.globa.%s %s[%s];' % ('b32', name+'_local', len(node.elems))
             elems = '{' + str(l) + ', ' + ', '.join([`i.n` for i in node.elems[1:]]) +'}'
             string = '\n\t.global %s %s[%s] = %s;' % (typ, name+'_local', len(node.elems), elems)
             string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
-            string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__])
+            string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__+'list'])
+#            elems = ['\n\t.global%s %s[%s];' % (typ, name+'_local', len(node.elems))]
+#            elems.extend(['\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')])
+#            elems.extend(['\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__+'list'])])
+#            elems.extend(['\n\tst.global%s [%s+%s], %s;' % (typ, name+'_local',(i)*4, visit(self, node.elems[i])) for i in range(len(node.elems))])
+#            string = ''.join(elems)
 
-        elif isinstance(node.elems[1], ast.Name):
-            elems = ''.join(['\n\tst.global.%s [%s+%s], %s;' % ('b32', name+'_local',i*4, visit(self, node.elems[i+1])) for i in range(len(node.elems[1:]))])
-            string = '\n\t.global.%s %s[%s];' % ('b32', name+'_local', len(node.elems))
+        elif isinstance(node.elems[1], ast.Name): 
+            print "THREADS:", instrs.threads
+            elems = ''.join(['\n\tst.global.%s [%s+%s], %s;' % ('b32', name,i*4, visit(self, node.elems[i])) for i in range(len(node.elems))])
+            string = '\n\t.global.%s %s[%s];' % ('b32', name+'_local', len(node.elems)*instrs.threads)
             string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
-            string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', node.elems[1]+'.y') + elems
+            string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', node.elems[1].id+'.y')
+            string = string + '\n\tadd.u32 %s, %s, %s;' % (name+'.y', name+'.y', 2) 
+            string = string + '\n\tmul.lo.u32 %%tid_offseth, 4, %s;' % (len(node.elems))
+            string = string + '\n\tmul.lo.u32 %tid_offseth, %tid_offseth, %t_id;'
+            string = string + '\n\tadd.u32 %s, %s, %%tid_offseth;' % (name+'.x', name+'.x')+ elems
         return string
 
     def visit_LoadParam(self, node):
@@ -334,8 +335,9 @@ class GenPTXVisitor(ast.NodeVisitor):
         return '\n\tst.global.b32 [%s], %s.x;' % (lhs, value)
 
     def visit_LoadGlobalInstr(self, node):
+        print "BUM"
         lhs = visit(self, node.lhs)
         rhs = visit(self, node.rhs)
-        return '\n\tld.global.b32 %s.x, [%s+%s];\n\tmov.b32 %s.y, %s.y;' % (lhs, rhs, visit(self, node.offset), lhs, rhs)
+        return '\n\tld.b32 %s.x, [%s+%s];\n\tmov.b32 %s.y, %s.y;\n\tsub.s32 %s.y, %s.y, 2;' % (lhs, rhs, visit(self, node.offset), lhs, rhs, lhs, rhs)
 
 

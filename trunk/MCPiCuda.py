@@ -42,10 +42,9 @@ def consumer(result_in):
    try:
        while True:
            cnt+=1
-           print str(cnt) + ' ' + str(sum)
+#           print str(cnt) + ' ' + str(sum)
            sum=(sum*cnt+result_in())/(cnt+1)    #Get result
    except ChannelRetireException:
-#       pass
        print 'Result:',sum            #We are done - print result
 
 jobs=Channel()
