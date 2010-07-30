@@ -16,7 +16,7 @@ s = '.version 2.0\n\
 .target sm_20\n\
 .reg .b32 divhelp<3>;\n\
 .reg .b64 %tid_offset;\n\
-.reg .b64 %tid_offseth;\n\
+.reg .u32 %tid_offseth;\n\
 .reg .b32 %t_id;\n\
 .reg .v2 .b32 %seed;\n\
 \n\
@@ -32,6 +32,13 @@ s = '.version 2.0\n\
         	st.global.v2.b32 [__cuda__cout_global], val;\n\
 }\n\
 \n\
+.func (.reg .v2 .b32 rval) float (.reg .v2 .b32 val){\n\
+        .reg .f32 tmp;\n\
+	cvt.rn.f32.u32 tmp, val.x;\n\
+        mov.f32 rval.x, tmp;\n\
+        mov.u32 rval.y, 1;\n\
+}\n\
+\n\
 .entry worker(\n\
 	.param .u64 __cudaparam__cin, \n\
 	.param .u64 __cudaparam__cout)\n\
@@ -43,37 +50,18 @@ s = '.version 2.0\n\
 	mul.wide.u16 %r1, %rh1, %rh2;\n\
 	cvt.u32.u16 %r2, %tid.x;\n\
 	add.u32 %t_id, %r2, %r1;\n\
-	mul.wide.u32 %tid_offseth, %t_id, 4;\n\
 	mul.wide.u32 %tid_offset, %t_id, 8;\n\
 \n\
-	.reg .v2 .b32 a;\n\
-	.reg .v2 .b32 x;\n\
-	.reg .v2 .b32 b;\n\
-	.reg .v2 .b32 l2;\n\
-	.reg .v2 .b32 %tmp<1>;\n\
+	.reg .v2 .b32 l;\n\
+	.reg .v2 .b32 %tmp<2>;\n\
 	.reg .pred %pred<0>;\n\
 	ld.param.u64 __cuda__cin_global, [__cudaparam__cin];\n\
 	ld.param.u64 __cuda__cout_global, [__cudaparam__cout];\n\
-	call (x), cin, ();\n\
-	ld.b32 a.x, [x+4];\n\
-	mov.b32 a.y, x.y;\n\
-	sub.s32 a.y, x.y, 2;\n\
-	ld.b32 b.x, [x+8];\n\
-	mov.b32 b.y, x.y;\n\
-	sub.s32 b.y, x.y, 2;\n\
-	.global.b32 %tmp0_local[96];\n\
-        .reg .u32 offset;\n\
-	mov.b32 %tmp0.x, %tmp0_local;\n\
-        mul.lo.u32 offset, %t_id, 3;\n\
-        mul.lo.u32 offset, offset, 4;\n\
-        add.u32 %tmp0.x, %tmp0.x, offset;\n\
-	mov.u32 %tmp0.y, a.y;\n\
-	add.u32 %tmp0.y, %tmp0.y, 2;\n\
-	st.global.b32 [%tmp0+0], 2;\n\
-	st.global.b32 [%tmp0+4], a;\n\
-	st.global.b32 [%tmp0+8], b;\n\
-	mov.b32.v2 l2, %tmp0;\n\
-	call cout, (l2);\n\
+	mov.u32 %tmp0.y, 0;\n\
+	mov.s32 %tmp0.x, 1;\n\
+	mov.b32.v2 l, %tmp0;\n\
+	call (%tmp1), float, (l);\n\
+	call cout, (%tmp1);\n\
 }'
 
 #Handles arguments, applies compiler passes to function, and executes resulting
@@ -128,29 +116,59 @@ def execute(func, args):
         for i in range(len(args)):
             if isinstance(args[i], ChannelEndWrite):
                 typ = cuda_args[i].array[0][1]
-                if instrs.tag['float'] == typ:
-                    cuda_args[i].array.dtype = (numpy.float32,numpy.int32)
-                    for (j,k) in cuda_args[i].array:
-                        args[i](j)
-                elif instrs.tag['int'] == typ:
-                    for (j,k) in cuda_args[i].array:
-                        args[i](j)
-                elif instrs.tag['intlist'] == typ:
-                    for (j,k) in cuda_args[i].array:
-                        arr = cuda.from_device(int(j),1,numpy.int32)
-                        arr = cuda.from_device(int(j+4),arr,numpy.int32)
-                        args[i](arr)
-                elif instrs.tag['floatlist'] == typ:
-                    for (j,k) in cuda_args[i].array:
-                        arr = cuda.from_device(int(j),1,numpy.int32)
-                        if arr > 1000000000: #Fix since length may be written as float
-                            arr = cuda.from_device(int(j),1,numpy.float32)
-                        arr = cuda.from_device(int(j+4),int(arr),numpy.float32)
-                        args[i](arr)
+                handle_write(typ, args[i], cuda_args[i].array)
+
     if retire:
         raise ChannelRetireException  
     elif poison:
         raise ChannelPoisonException
+
+def handle_write(typ, args, array):
+	print "Typ", typ
+	if instrs.tag['float'] == typ:
+	    array.dtype = (numpy.float32,numpy.int32)
+	    for (j,k) in array:
+		args(j)
+	elif instrs.tag['int'] == typ:
+	    for (j,k) in array:
+		args(j)
+	elif instrs.tag['intlist'] == typ:
+	    for (j,k) in array:
+		arr = cuda.from_device(int(j),1,numpy.int32)
+		arr = cuda.from_device(int(j+4),arr,numpy.int32)
+		arr = cuda.from_device(int(j),1,numpy.int32)
+		arr = cuda.from_device(int(j+4),arr,numpy.int32)
+		args(arr)
+	elif instrs.tag['floatlist'] == typ:
+	    for (j,k) in array:
+		arr = cuda.from_device(int(j),1,numpy.int32)
+		if arr > 1000000000: #Fix since length may be written as float
+		    arr = cuda.from_device(int(j),1,numpy.float32)
+		arr = cuda.from_device(int(j+4),int(arr),numpy.float32)
+		args(arr)
+	elif typ == 4:
+	    for (j,k) in array:
+		arr = cuda.from_device(int(j),1,numpy.int32)
+		arr = cuda.from_device(int(j+4),arr,numpy.int32)
+
+                res = []
+                for j in arr:
+                    arr = cuda.from_device(int(j),1,numpy.int32)
+		    res.extend(cuda.from_device(int(j+4),arr,numpy.int32))
+		args(res)
+	elif typ == 5:
+	    for (j,k) in array:
+		arr = cuda.from_device(int(j),1,numpy.int32)
+		arr = cuda.from_device(int(j+4),arr,numpy.int32)
+
+                res = []
+                for j in arr:
+		    arr = cuda.from_device(int(j),1,numpy.int32)
+		    if arr > 1000000000: #Fix since length may be written as float
+		        arr = cuda.from_device(int(j),1,numpy.float32)
+                    dir(cuda.from_device(int(j+4),int(arr),numpy.float32))
+		    res.append(cuda.from_device(int(j+4),int(arr),numpy.float32).tolist())
+		args(res)
 
 def handle_compileargs(args):
     for i in args:

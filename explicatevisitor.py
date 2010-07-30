@@ -93,6 +93,9 @@ class ExplicateVisitor(ast.NodeVisitor):
                 else:
                     args = [visit(self, i) for i in node.args]
                     return ast.Call(node.func, args, node.keywords, node.starargs, node.kwargs)
+            elif node.func.id == 'float' or node.func.id == 'int':
+                args = [visit(self, i) for i in node.args]
+                return ast.Call(node.func, args, node.keywords, node.starargs, node.kwargs)
         #Normal function call
         else:
             args = [visit(self, i) for i in node.args]
