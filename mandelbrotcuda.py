@@ -3,8 +3,8 @@ from cudaprocess import *
 import Image
 import time
 
-disp_width = 1024
-disp_height = 1024
+disp_width = 1920
+disp_height = 1280
 
 image = Image.new("I", [disp_width,disp_height])
 
@@ -21,8 +21,8 @@ def worker(cin, cout):
   imag_min = -1.5
   real_max = 1.5
   imag_max = 1.5
-  disp_width = 1024
-  disp_height = 1024
+  disp_width = 1920
+  disp_height = 1280
   scale_real = (real_max - real_min)/float(disp_width)
   scale_imag = (imag_max - imag_min)/float(disp_height)
   def cal_pixel(c):
@@ -46,7 +46,7 @@ def worker(cin, cout):
   c_imag = 0.0
   while True:
     y = cin()
-    color = 1024*[None]
+    color = 1920*[None]
     c_imag = imag_min + float(y) * scale_imag
     x = 0
     while x < disp_width:
@@ -61,7 +61,7 @@ def consumer(cin):
   try:
     while True:
       y, color = cin()
-      for x in range(disp_height):
+      for x in range(disp_width):
         image.putpixel((x, y[0]), color[x])
   except ChannelRetireException:
     image.show()

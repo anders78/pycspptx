@@ -12,52 +12,6 @@ import instrs
 import time
 from pycsp.processes.channel import ChannelRetireException, ChannelPoisonException
 
-s = '.version 2.0\n\
-.target sm_20\n\
-.reg .b32 divhelp<3>;\n\
-.reg .b64 %tid_offset;\n\
-.reg .u32 %tid_offseth;\n\
-.reg .b32 %t_id;\n\
-.reg .v2 .b32 %seed;\n\
-\n\
-.reg .b64 __cuda__cin_global;\n\
-        .func (.reg .v2 .b32 rval) cin (){\n\
-        	add.u64 __cuda__cin_global, __cuda__cin_global, %tid_offset;\n\
-        	ld.global.v2.b32 rval, [__cuda__cin_global];\n\
-}\n\
-\n\
-.reg .b64 __cuda__cout_global;\n\
-        .func () cout (.reg .v2 .b32 val){\n\
-        	add.u64 __cuda__cout_global, __cuda__cout_global, %tid_offset;\n\
-        	st.global.v2.b32 [__cuda__cout_global], val;\n\
-}\n\
-\n\
-.entry worker(\n\
-	.param .u64 __cudaparam__cin, \n\
-	.param .u64 __cudaparam__cout)\n\
-{\n\
-	.reg .b32 %r<3>;\n\
-	.reg .b16 %rh<3>;\n\
-	mov.u16 %rh1, %ctaid.x;\n\
-	mov.u16 %rh2, %ntid.x;\n\
-	mul.wide.u16 %r1, %rh1, %rh2;\n\
-	cvt.u32.u16 %r2, %tid.x;\n\
-	add.u32 %t_id, %r2, %r1;\n\
-	mul.wide.u32 %tid_offset, %t_id, 8;\n\
-\n\
-	.reg .v2 .b32 l;\n\
-	.reg .v2 .b32 %tmp<1>;\n\
-	.reg .pred %pred<0>;\n\
-	ld.param.u64 __cuda__cin_global, [__cudaparam__cin];\n\
-	ld.param.u64 __cuda__cout_global, [__cudaparam__cout];\n\
-	.global .s32 %tmp0_local[4] = {3, 2, 1, 0};\n\
-	.global .s32 %tmp10_local[4] = {3, 6, 7, 8};\n\
-	mov.b32 %tmp0.x, %tmp0_local;\n\
-	mov.u32 %tmp0.y, 2;\n\
-	mov.b32.v2 l, %tmp0;\n\
-	call cout, (l);\n\
-}'
-
 #Handles arguments, applies compiler passes to function, and executes resulting
 #PTX code on the device
 def execute(func, args):
@@ -87,21 +41,17 @@ def execute(func, args):
     #instruction nodes
     ptx_generator = GenPTXVisitor()
     ptx = ptx_generator.visit(st)
-#    print ptx
-    start = time.time()
 
     #Load CUDA module from PTX string
     hModule = cuda.module_from_buffer(ptx)
 
-    end = time.time()
-    print "Time to gen ptx:", end-start
     #Set entry function
     hKernel = hModule.get_function(instrs.entryFunc)
 
     #Calculate threads and blocks
     (threads, blocks) = calcThreadsnBlocks(count)
-    #Execute kernel
 
+    #Execute kernel
     hKernel(*cuda_args, block=(threads, 1, 1), grid=(blocks,1))
     #Pass outputs on to outputchannels. 
     #Check types, change output to
@@ -133,7 +83,7 @@ def handle_write(typ, args, array):
 	elif instrs.tag['floatlist'] == typ:
 	    for (j,k) in array:
 		arr = cuda.from_device(int(j),1,numpy.int32)
-		if arr > 1000000000: #Fix since length may be written as float
+		if arr > 1000000000: #Hack since length may be written as float
 		    arr = cuda.from_device(int(j),1,numpy.float32)
 		arr = cuda.from_device(int(j+4),int(arr),numpy.float32)
 		args(arr)

@@ -3,11 +3,11 @@ from cudaprocess import *
 import Image
 import time
 
-disp_width = 1024
-disp_height = 1024
+disp_width = 1792
+disp_height = disp_width
 
-(real_min, imag_min) = (-1.5,-1.5)
-(real_max, imag_max) = (1.5,1.5)
+(real_min, imag_min) = (-2.0,-2.0)
+(real_max, imag_max) = (2.0,2.0)
 
 scale_real = (real_max - real_min)/disp_width
 scale_imag = (imag_max - imag_min)/disp_height
@@ -58,16 +58,17 @@ def consumer(cin):
   try:
     while True:
       (y, color) = cin()
-      for x in range(disp_height):
+      for x in range(disp_width):
         image.putpixel((x, y), color[x])
   except ChannelRetireException:
-      image.show()
+    pass
+#      image.show()
 
 C1 = Channel()
 C2 = Channel()
 
 start = time.time()
-Parallel(producer(C1.writer()), worker(C1.reader(), C2.writer()), consumer(C2.reader()))
+Parallel(producer(C1.writer()), 3*worker(C1.reader(), C2.writer()), consumer(C2.reader()))
 
 end = time.time()
 print "Time taken(s)=", end-start

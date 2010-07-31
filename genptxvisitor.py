@@ -182,14 +182,6 @@ class GenPTXVisitor(ast.NodeVisitor):
             string = '\n\t.global %s %s[%s] = %s;' % (typ, name+'_local', len(node.elems), '{'+elems+'}')
             string = string + '\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')
             string = string + '\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__+'list'])
-#            string = string + '\n\tmul.lo.u32 %%tid_offseth, 4, %s;' % (len(node.elems))
- #           string = string + '\n\tmul.lo.u32 %tid_offseth, %tid_offseth, %t_id;'
-  #          string = string + '\n\tadd.u32 %s, %s, %%tid_offseth;' % (name+'.x', name+'.x')
-#            elems = ['\n\t.global%s %s[%s];' % (typ, name+'_local', len(node.elems))]
-#            elems.extend(['\n\tmov.b32 %s, %s;' % (name+'.x', name+'_local')])
-#            elems.extend(['\n\tmov.u32 %s, %s;' % (name+'.y', instrs.tag[type(node.elems[1].n).__name__+'list'])])
-#            elems.extend(['\n\tst.global%s [%s+%s], %s;' % (typ, name,(i)*4, visit(self, node.elems[i])) for i in range(len(node.elems))])
-#            string = ''.join(elems)
 
         elif isinstance(node.elems[1], ast.Name): 
             elems = ''.join(['\n\tst.global.%s [%s+%s], %s;' % ('b32', name,i*4, visit(self, node.elems[i])) for i in range(len(node.elems))])
@@ -290,8 +282,6 @@ class GenPTXVisitor(ast.NodeVisitor):
 
     def visit_Index(self, node):
         val = visit(self, node.value)
-        ##Value is multiplied by 4 to transform to 32 bit offset
-#        val = int(val)*4
         return val
 
     def visit_Name(self, node):
