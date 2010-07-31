@@ -127,12 +127,6 @@ class ExplicateVisitor(ast.NodeVisitor):
     def visit_List(self, node):
         return ast.List([ast.Num(len(node.elts))]+node.elts, node.ctx)
 
-    def visit_ListComp(self, node):
-        #Warning! Hack to allow list comprehension to make list of floats
-        #List comprehensions not yet fully supported
-        l = [ast.Num(float(i)) for i in range(node.generators[0].iter.args[0].n)]
-        return ast.List([ast.Num(len(l))]+l, ast.Load())
-
     def visit_Num(self, node):
         return SetType(type(node.n).__name__, node)
 
@@ -168,8 +162,6 @@ class ExplicateVisitor(ast.NodeVisitor):
             else:
                 raise Exception('Unary operation %s not supported' % type(node.op).__name__)
         else:
-            #This branch not working at the moment.
-            #Make letify/ifexpr as BinOp
             raise Exception('Currently only constants allowed in unary operations')
 
     def visit_While(self, node):

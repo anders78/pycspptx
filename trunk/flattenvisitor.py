@@ -170,10 +170,7 @@ class FlattenVisitor(ast.NodeVisitor):
 
     def visit_Index(self, node, simple):
         (value, stmts) = visit(self, node.value, True)
-#        if simple:
         tmp = generate_var('tmp')
-#            return (ast.Name(tmp, ast.Load()), stmts + [ast.Assign([ast.Name(tmp, ast.Store())], ast.Index(value))])
-#        else:
         return (ast.Index(ast.Name(tmp, ast.Load())), stmts + [ast.Assign([ast.Name(tmp, ast.Store())], value)])
 
     def visit_Lambda(self, node, simple):
@@ -212,11 +209,8 @@ class FlattenVisitor(ast.NodeVisitor):
         (value_res, value_stmt) = visit(self, node.value, True)
         (slice_res, slice_stmt) = visit(self, node.slice, True)
         rhs = ast.Subscript(value_res, slice_res, node.ctx)
-  #      if simple:
         tmp = generate_var('tmp')
         return (ast.Name(tmp, ast.Load()), value_stmt + slice_stmt + [ast.Assign([ast.Name(tmp, ast.Store())], rhs)])
-#        else:
- #           return (rhs, value_stmt+slice_stmt)
 
     def visit_Typ(self, node, simple):
         (expr, stmts) = visit(self, node.value, True)
