@@ -1,0 +1,1 @@
+A PyCSP to CUDA PTX compiler, as part of my master thesis in computer science at the University of Copenhagen
